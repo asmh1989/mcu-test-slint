@@ -1,0 +1,67 @@
+import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component AddressPanel inherits Rectangle {
+    in-out property <string> start-address-label: "地址输入框";
+    in-out property <string> param-label: "参数输入/显示框";
+    in-out property <string> read-address-button: "读取地址";
+    in-out property <string> write-address-button: "写入地址";
+    in-out property <string> start-address-value: "";
+    in-out property <string> param-value: "";
+
+    callback read-address-clicked();
+    callback write-address-clicked();
+
+    border-radius: 12px;
+    border-width: 2px;
+    border-color: #d0d0d0;
+    background: #f8f9fa;
+    drop-shadow-blur: 4px;
+    drop-shadow-color: #00000020;
+
+    VerticalBox {
+        padding: 12px;
+        spacing: 8px;
+
+        // 上部分：两个输入框
+        HorizontalBox {
+            spacing: 8px;
+            
+            LineEdit {
+                placeholder-text: start-address-label;
+                text <=> start-address-value;
+                min-width: 40px;
+                preferred-height: 32px;
+            }
+
+            LineEdit {
+                placeholder-text: param-label;
+                text <=> param-value;
+                min-width: 40px;
+                preferred-height: 32px;
+            }
+        }
+
+        // 下部分：两个按钮
+        HorizontalBox {
+            spacing: 8px;
+
+            Button {
+                text: read-address-button;
+                min-width: 40px;
+                preferred-height: 32px;
+                clicked => {
+                    read-address-clicked();
+                }
+            }
+
+            Button {
+                text: write-address-button;
+                min-width: 40px;
+                preferred-height: 32px;
+                clicked => {
+                    write-address-clicked();
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,117 @@
+import { Button, LineEdit, VerticalBox, HorizontalBox, TextEdit, ScrollView } from "std-widgets.slint";
+
+export component FileOperationPanel inherits Rectangle {
+    in-out property <string> file-status-text: "请选择文件...";
+    in-out property <brush> file-status-color: #6c757d; // 默认灰色
+    in-out property <string> read-file-button-text: "读取文件";
+    in-out property <string> read-device-button-text: "读取器件";
+    in-out property <string> config-file-button-text: "配置器件";
+    in-out property <string> file-content-label: "寄存器地址与参数表";
+    in-out property <string> file-content: "";
+
+    callback read-file-clicked();
+    callback read-device-clicked();
+    callback config-file-clicked();
+
+    border-radius: 12px;
+    border-width: 2px;
+    border-color: #d0d0d0;
+    background: #f8f9fa;
+    drop-shadow-blur: 4px;
+    drop-shadow-color: #00000020;
+
+    VerticalBox {
+        padding: 16px;
+        spacing: 16px;
+
+        // 上部分：文件状态显示（高度较小）
+        Rectangle {
+            height: 40px;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #e0e0e0;
+            background: #ffffff;
+
+            HorizontalBox {
+                padding: 8px;
+                alignment: center;
+
+                Text {
+                    text: file-status-text;
+                    color: file-status-color;
+                    font-size: 14px;
+                    font-weight: 500;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 下部分：左右布局
+        HorizontalBox {
+            spacing: 6px;
+            
+            // 左侧：三个按钮垂直排列
+            VerticalBox {
+                spacing: 40px;
+                min-width: 40px;
+
+                Button {
+                    text: read-file-button-text;
+                    preferred-height: 32px;
+                    clicked => {
+                        read-file-clicked();
+                    }
+                }
+
+                Button {
+                    text: read-device-button-text;
+                    preferred-height: 32px;
+                    clicked => {
+                        read-device-clicked();
+                    }
+                }
+
+                Button {
+                    text: config-file-button-text;
+                    preferred-height: 32px;
+                    clicked => {
+                        config-file-clicked();
+                    }
+                }
+            }
+
+            // 右侧：大框显示内容
+            VerticalBox {
+                horizontal-stretch: 1;
+                spacing: 8px;
+
+                Text {
+                    text: file-content-label;
+                    color: #495057;
+                    font-size: 16px;
+                    font-weight: 600;
+                }
+
+                Rectangle {
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #e0e0e0;
+                    background: #ffffff;
+                    min-height: 200px;
+                    vertical-stretch: 1;
+                    drop-shadow-blur: 2px;
+                    drop-shadow-color: #00000010;
+
+                    ScrollView {
+                        TextEdit {
+                            text <=> file-content;
+                            read-only: true;
+                            font-size: 13px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

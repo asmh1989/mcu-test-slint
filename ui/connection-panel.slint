@@ -1,0 +1,64 @@
+import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component ConnectionPanel inherits Rectangle {
+    in-out property <string> mcu-label-text: "连接";
+    in-out property <string> port-value: "COM5";
+    in-out property <string> connect-status-text: "已连接";
+    in-out property <bool> is-connected: true;
+
+    callback connect-clicked();
+    callback port-changed(string);
+
+    border-radius: 12px;
+    border-width: 2px;
+    border-color: #d0d0d0;
+    background: #f8f9fa;
+    drop-shadow-blur: 4px;
+    drop-shadow-color: #00000020;
+
+    VerticalBox {
+        padding: 12px;
+        spacing: 8px;
+
+        HorizontalBox {
+            spacing: 8px;
+
+            Button {
+                text: mcu-label-text;
+                min-width: 40px;
+                preferred-height: 32px;
+                clicked => {
+                    connect-clicked();
+                }
+            }
+
+            LineEdit {
+                text <=> port-value;
+                placeholder-text: "端口号";
+                min-width: 60px;
+                preferred-height: 32px;
+                edited => {
+                    port-changed(self.text);
+                }
+            }
+
+            Rectangle {
+                min-width: 60px;
+                preferred-height: 32px;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: is-connected ? #28a745 : #dc3545;
+                background: is-connected ? #d4edda : #f8d7da;
+
+                Text {
+                    text: connect-status-text;
+                    color: is-connected ? #155724 : #721c24;
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

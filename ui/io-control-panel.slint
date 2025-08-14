@@ -1,0 +1,111 @@
+import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component IOControlPanel inherits Rectangle {
+    in-out property <string> io1-low-text: "置低";
+    in-out property <string> io1-high-text: "置高";
+    in-out property <string> io1-display-text: "IO1显示";
+    in-out property <bool> io1-status: false; // false=低电平, true=高电平
+    in-out property <string> io2-low-text: "置低";
+    in-out property <string> io2-high-text: "置高";
+    in-out property <string> io2-display-text: "IO2显示";
+    in-out property <bool> io2-status: false; // false=低电平, true=高电平
+
+    callback io1-low-clicked();
+    callback io1-high-clicked();
+    callback io2-low-clicked();
+    callback io2-high-clicked();
+
+    border-radius: 12px;
+    border-width: 2px;
+    border-color: #d0d0d0;
+    background: #f8f9fa;
+    drop-shadow-blur: 4px;
+    drop-shadow-color: #00000020;
+
+    VerticalBox {
+        padding: 12px;
+        spacing: 12px;
+
+        // IO1 控制行
+        HorizontalBox {
+            spacing: 8px;
+
+            Button {
+                text: io1-low-text;
+                min-width: 40px;
+                preferred-height: 32px;
+                clicked => {
+                    io1-low-clicked();
+                }
+            }
+
+            Button {
+                text: io1-high-text;
+                min-width: 40px;
+                preferred-height: 32px;
+                clicked => {
+                    io1-high-clicked();
+                }
+            }
+
+            Rectangle {
+                min-width: 40px;
+                preferred-height: 32px;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: io1-status ? #28a745 : #dc3545;
+                background: io1-status ? #d4edda : #f8d7da;
+
+                Text {
+                    text: io1-display-text;
+                    color: io1-status ? #155724 : #721c24;
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // IO2 控制行
+        HorizontalBox {
+            spacing: 8px;
+
+            Button {
+                text: io2-low-text;
+                min-width: 40px;
+                preferred-height: 32px;
+                clicked => {
+                    io2-low-clicked();
+                }
+            }
+
+            Button {
+                text: io2-high-text;
+                min-width: 40px;
+                preferred-height: 32px;
+                clicked => {
+                    io2-high-clicked();
+                }
+            }
+
+            Rectangle {
+                min-width: 40px;
+                preferred-height: 32px;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: io2-status ? #28a745 : #dc3545;
+                background: io2-status ? #d4edda : #f8d7da;
+
+                Text {
+                    text: io2-display-text;
+                    color: io2-status ? #155724 : #721c24;
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
