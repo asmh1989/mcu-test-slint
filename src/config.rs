@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, sync::Arc};
 
 use log::LevelFilter;
 use log4rs::{
@@ -6,6 +6,13 @@ use log4rs::{
     config::{Appender, Logger, Root},
     encode::pattern::PatternEncoder,
 };
+use lazy_static::lazy_static;
+
+use tokio::runtime::Runtime;
+
+lazy_static! {
+    pub static ref RUNTIME: Arc<Runtime> = Arc::new(Runtime::new().unwrap());
+}
 
 fn init_log() {
     let stdout = ConsoleAppender::builder()
@@ -48,4 +55,9 @@ pub fn write_vec_to_file(filename: &str, data: &Vec<String>) {
     }
 
     log::info!("save content to file = {}", filename);
+}
+
+
+pub fn get_runtime() -> Arc<Runtime> {
+    return RUNTIME.clone();
 }
