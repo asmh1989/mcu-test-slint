@@ -1,0 +1,51 @@
+export global AppState {
+    // 连接状态相关
+    in-out property <string> mcu-label: "连接";
+    in-out property <string> port-value: "COM7";
+    in-out property <string> connect-status: "已连接";
+    in-out property <bool> is-connected: true;
+    in-out property <string> chip1-type: "";
+    in-out property <string> chip2-type: "";
+    in-out property <bool> show-chip-info: false;
+
+    // 地址输入相关
+    in-out property <string> start-address-label: "地址输入框";
+    in-out property <string> param-label: "参数输入/显示框";
+    in-out property <string> read-address-button: "读取地址";
+    in-out property <string> write-address-button: "写入地址";
+    in-out property <string> start-address-value: "";
+    in-out property <string> param-value: "";
+
+    // IO控制相关
+    in-out property <string> io1-low: "置低";
+    in-out property <string> io1-high: "置高";
+    in-out property <string> io1-display: "IO1显示";
+    in-out property <bool> io1-status: false;
+    in-out property <string> io2-low: "置低";
+    in-out property <string> io2-high: "置高";
+    in-out property <string> io2-display: "IO2显示";
+    in-out property <bool> io2-status: false;
+
+    // 文件操作相关
+    in-out property <string> file-status: "请选择文件...";
+    in-out property <brush> file-status-color: #6c757d;
+    in-out property <string> read-file-button: "读取文件";
+    in-out property <string> read-device-button: "读取器件";
+    in-out property <string> config-file-button: "配置器件";
+    in-out property <string> file-content-label: "寄存器地址与参数表";
+    in-out property <string> file-content: "";
+
+    // 回调函数定义
+    callback connect-clicked();
+    callback port-changed(string);
+    callback read-address-clicked();
+    callback write-address-clicked();
+    callback io1-low-clicked();
+    callback io1-high-clicked();
+    callback io2-low-clicked();
+    callback io2-high-clicked();
+    callback read-file-clicked();
+    callback read-device-clicked();
+    callback config-file-clicked();
+
+}

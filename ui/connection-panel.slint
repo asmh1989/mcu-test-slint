@@ -5,6 +5,9 @@ export component ConnectionPanel inherits Rectangle {
     in-out property <string> port-value: "COM5";
     in-out property <string> connect-status-text: "已连接";
     in-out property <bool> is-connected: true;
+    in-out property <string> chip1-type: "";
+    in-out property <string> chip2-type: "";
+    in-out property <bool> show-chip-info: true;
 
     callback connect-clicked();
     callback port-changed(string);
@@ -17,8 +20,8 @@ export component ConnectionPanel inherits Rectangle {
     drop-shadow-color: #00000020;
 
     VerticalBox {
-        padding: 12px;
-        spacing: 8px;
+        padding: 8px;
+        spacing: 4px;
 
         HorizontalBox {
             spacing: 8px;
@@ -26,7 +29,6 @@ export component ConnectionPanel inherits Rectangle {
             Button {
                 text: mcu-label-text;
                 min-width: 40px;
-                preferred-height: 32px;
                 clicked => {
                     connect-clicked();
                 }
@@ -36,7 +38,6 @@ export component ConnectionPanel inherits Rectangle {
                 text <=> port-value;
                 placeholder-text: "端口号";
                 min-width: 60px;
-                preferred-height: 32px;
                 edited => {
                     port-changed(self.text);
                 }
@@ -44,7 +45,6 @@ export component ConnectionPanel inherits Rectangle {
 
             Rectangle {
                 min-width: 60px;
-                preferred-height: 32px;
                 border-radius: 6px;
                 border-width: 1px;
                 border-color: is-connected ? #28a745 : #dc3545;
@@ -55,6 +55,51 @@ export component ConnectionPanel inherits Rectangle {
                     color: is-connected ? #155724 : #721c24;
                     font-size: 12px;
                     font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if !show-chip-info: Rectangle {
+            height: 40%;
+            width: 10px;
+        }
+
+        // 芯片信息显示区域 - 仅在连接成功且有芯片信息时显示
+        if show-chip-info : HorizontalBox {
+            spacing: 8px;
+            height: 40%;
+
+            Rectangle {
+                min-width: 40px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #007bff;
+                background: #e3f2fd;
+
+                Text {
+                    text: "芯片1: " + chip1-type;
+                    color: #1565c0;
+                    font-size: 11px;
+                    font-weight: 500;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                min-width: 40px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #007bff;
+                background: #e3f2fd;
+
+                Text {
+                    text: "芯片2: " + chip2-type;
+                    color: #1565c0;
+                    font-size: 11px;
+                    font-weight: 500;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }

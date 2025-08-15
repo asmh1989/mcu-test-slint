@@ -62,7 +62,7 @@ impl SerialPortRegistry {
         });
 
         // 在创建注册表时启动统一的监测任务
-        registry.clone().start_monitoring_task();
+        // registry.clone().start_monitoring_task();
 
         registry // 返回注册表实例
     }
@@ -188,7 +188,7 @@ impl SerialPortRegistry {
                             port
                         );
                         // 这里需要指定默认参数, 你可以根据实际情况调整
-                        match registry.add_scpi_port(port, 9600).await {
+                        match registry.add_scpi_port(port, 115200).await {
                             Ok(_) => {
                                 // 触发重新连接事件
                                 registry
@@ -384,6 +384,14 @@ impl SerialPortRegistry {
     pub async fn get_port(&self, port_path: &str) -> Option<Arc<SerialPortManager>> {
         let ports = self.ports.lock().await;
         ports.get(port_path).cloned() // cloned() 创建一个新的 Arc 引用
+    }
+
+    pub async fn is_connected(&self, port_path: &str) -> bool {
+        if let Some(manager) = self.get_port(port_path).await {
+            manager.is_open()
+        } else {
+            false
+        }
     }
 
     // 移除前会先关闭该串口并触发其任务的取消

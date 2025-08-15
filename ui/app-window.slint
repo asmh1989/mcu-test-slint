@@ -3,41 +3,9 @@ import { ConnectionPanel } from "connection-panel.slint";
 import { AddressPanel } from "address-panel.slint";
 import { IOControlPanel } from "io-control-panel.slint";
 import { FileOperationPanel } from "file-operation-panel.slint";
+import { AppState } from "globals/app-state.slint";
 
-export global AppState {
-    // 连接状态相关
-    in-out property <string> mcu-label: "连接";
-    in-out property <string> port-value: "COM5";
-    in-out property <string> connect-status: "已连接";
-    in-out property <bool> is-connected: true;
-
-    // 地址输入相关
-    in-out property <string> start-address-label: "地址输入框";
-    in-out property <string> param-label: "参数输入/显示框";
-    in-out property <string> read-address-button: "读取地址";
-    in-out property <string> write-address-button: "写入地址";
-    in-out property <string> start-address-value: "";
-    in-out property <string> param-value: "";
-
-    // IO控制相关
-    in-out property <string> io1-low: "置低";
-    in-out property <string> io1-high: "置高";
-    in-out property <string> io1-display: "IO1显示";
-    in-out property <bool> io1-status: false;
-    in-out property <string> io2-low: "置低";
-    in-out property <string> io2-high: "置高";
-    in-out property <string> io2-display: "IO2显示";
-    in-out property <bool> io2-status: false;
-
-    // 文件操作相关
-    in-out property <string> file-status: "请选择文件...";
-    in-out property <brush> file-status-color: #6c757d;
-    in-out property <string> read-file-button: "读取文件";
-    in-out property <string> read-device-button: "读取器件";
-    in-out property <string> config-file-button: "配置器件";
-    in-out property <string> file-content-label: "寄存器地址与参数表";
-    in-out property <string> file-content: "";
-}
+export { AppState }
 
 export component AppWindow inherits Window {
     title: "MCU测试工具";
@@ -47,18 +15,6 @@ export component AppWindow inherits Window {
     preferred-height: 600px;
     background: #f0f2f5;
 
-    // 回调函数定义
-    callback connect-clicked();
-    callback port-changed(string);
-    callback read-address-clicked();
-    callback write-address-clicked();
-    callback io1-low-clicked();
-    callback io1-high-clicked();
-    callback io2-low-clicked();
-    callback io2-high-clicked();
-    callback read-file-clicked();
-    callback read-device-clicked();
-    callback config-file-clicked();
 
     HorizontalBox {
         padding: 20px;
@@ -72,16 +28,19 @@ export component AppWindow inherits Window {
             // 上：连接面板 - 固定高度
             ConnectionPanel {
                 vertical-stretch: 0;
-                height: 90px;
+                height: 100px;
                 mcu-label-text: AppState.mcu-label;
                 port-value <=> AppState.port-value;
                 connect-status-text: AppState.connect-status;
                 is-connected: AppState.is-connected;
+                chip1-type: AppState.chip1-type;
+                chip2-type: AppState.chip2-type;
+                show-chip-info: AppState.show-chip-info;
                 connect-clicked => {
-                    root.connect-clicked();
+                    AppState.connect-clicked();
                 }
                 port-changed(text) => {
-                    root.port-changed(text);
+                    AppState.port-changed(text);
                 }
             }
 
@@ -96,10 +55,10 @@ export component AppWindow inherits Window {
                 start-address-value <=> AppState.start-address-value;
                 param-value <=> AppState.param-value;
                 read-address-clicked => {
-                    root.read-address-clicked();
+                    AppState.read-address-clicked();
                 }
                 write-address-clicked => {
-                    root.write-address-clicked();
+                    AppState.write-address-clicked();
                 }
             }
 
@@ -116,16 +75,16 @@ export component AppWindow inherits Window {
                 io2-display-text: AppState.io2-display;
                 io2-status: AppState.io2-status;
                 io1-low-clicked => {
-                    root.io1-low-clicked();
+                    AppState.io1-low-clicked();
                 }
                 io1-high-clicked => {
-                    root.io1-high-clicked();
+                    AppState.io1-high-clicked();
                 }
                 io2-low-clicked => {
-                    root.io2-low-clicked();
+                    AppState.io2-low-clicked();
                 }
                 io2-high-clicked => {
-                    root.io2-high-clicked();
+                    AppState.io2-high-clicked();
                 }
             }
         }
@@ -141,13 +100,13 @@ export component AppWindow inherits Window {
             file-content-label: AppState.file-content-label;
             file-content <=> AppState.file-content;
             read-file-clicked => {
-                root.read-file-clicked();
+                AppState.read-file-clicked();
             }
             read-device-clicked => {
-                root.read-device-clicked();
+                AppState.read-device-clicked();
             }
             config-file-clicked => {
-                root.config-file-clicked();
+                AppState.config-file-clicked();
             }
         }
     }

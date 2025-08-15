@@ -71,6 +71,46 @@ impl ModbusFrame {
         }
     }
     
+    // 创建读取请求帧
+    pub fn new_read_request(
+        slave_address: u8,
+        register_type: RegisterType,
+        start_address: u16,
+        quantity: u16,
+    ) -> Result<Self, ModbusError> {
+        let function_code = register_type.read_code();
+        let mut data = Vec::with_capacity(4);
+        
+        // 添加起始地址（高字节在前）
+        data.push((start_address >> 8) as u8);
+        data.push((start_address & 0xFF) as u8);
+        
+        // 添加数量（高字节在前）
+        data.push((quantity >> 8) as u8);
+        data.push((quantity & 0xFF) as u8);
+        
+        Ok(Self {
+            slave_address,
+            function_code,
+            data,
+        })
+    }
+    
+    // 获取数据部分
+    pub fn get_data(&self) -> &[u8] {
+        &self.data
+    }
+    
+    // 获取从站地址
+    pub fn get_slave_address(&self) -> u8 {
+        self.slave_address
+    }
+    
+    // 获取功能码
+    pub fn get_function_code(&self) -> u8 {
+        self.function_code
+    }
+    
     // 计算帧CRC
     fn calculate_crc(&self) -> u16 {
         let crc_alg = Crc::<u16>::new(&CRC_16_MODBUS);
