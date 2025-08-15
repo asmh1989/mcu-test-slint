@@ -15,7 +15,6 @@ export component AppWindow inherits Window {
     preferred-height: 600px;
     background: #f0f2f5;
 
-
     HorizontalBox {
         padding: 20px;
         spacing: 20px;
@@ -65,27 +64,7 @@ export component AppWindow inherits Window {
             // 下：IO控制面板 - 弹性高度1
             IOControlPanel {
                 vertical-stretch: 1;
-                min-height: 140px;
-                io1-low-text: AppState.io1-low;
-                io1-high-text: AppState.io1-high;
-                io1-display-text: AppState.io1-display;
-                io1-status: AppState.io1-status;
-                io2-low-text: AppState.io2-low;
-                io2-high-text: AppState.io2-high;
-                io2-display-text: AppState.io2-display;
-                io2-status: AppState.io2-status;
-                io1-low-clicked => {
-                    AppState.io1-low-clicked();
-                }
-                io1-high-clicked => {
-                    AppState.io1-high-clicked();
-                }
-                io2-low-clicked => {
-                    AppState.io2-low-clicked();
-                }
-                io2-high-clicked => {
-                    AppState.io2-high-clicked();
-                }
+                min-height: 180px;
             }
         }
 

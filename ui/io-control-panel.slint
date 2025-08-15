@@ -1,20 +1,119 @@
 import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { AppState } from "globals/app-state.slint";
+
+// 圆形状态显示组件
+component StatusCircle inherits Rectangle {
+    in property <string> io-text;
+    in property <int> io-value;
+    width: 60px;
+    height: 60px;
+    border-radius: 30px;
+    border-width: 2px;
+    border-color: io-value == 1 ? #28a745 : #dc3545;
+    background: io-value == 1 ? #d4edda : #f8d7da;
+    Text {
+        text: io-text + ": " + io-value;
+        color: io-value == 1 ? #155724 : #721c24;
+        font-size: 12px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// 芯片控制面板组件
+component ChipPanel inherits Rectangle {
+    in property <string> chip-name;
+    in property <string> chip-type;
+    in property <[int]> io-status;
+    in property <int> io2-address;
+    in property <int> io3-address;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #c0c0c0;
+    background: #ffffff;
+    VerticalBox {
+        padding: 8px;
+        spacing: 6px;
+
+        // 第一行: 芯片标题和IO1状态
+        HorizontalBox {
+            spacing: 6px;
+            alignment: LayoutAlignment.start;
+            Text {
+                text: "芯片" + chip-name;
+                font-size: 14px;
+                font-weight: 700;
+                color: #333;
+                min-width: 40px;
+                vertical-alignment: center;
+            }
+
+            StatusCircle {
+                io-text: "IO1";
+                io-value: io-status[0];
+            }
+        }
+
+        // 第二行: IO2控制按钮和状态
+        HorizontalBox {
+            spacing: 12px;
+            alignment: center;
+            Button {
+                text: "↑";
+                min-width: 40px;
+                preferred-height: 36px;
+                clicked => {
+                    AppState.io-chip-click(chip-type, 1, io2-address);
+                }
+            }
+
+            StatusCircle {
+                io-text: "IO2";
+                io-value: io-status[1];
+            }
+
+            Button {
+                text: "↓";
+                min-width: 40px;
+                preferred-height: 36px;
+                clicked => {
+                    AppState.io-chip-click(chip-type, 0, io2-address);
+                }
+            }
+        }
+
+        // 第三行: IO3控制按钮和状态
+        HorizontalBox {
+            spacing: 12px;
+            alignment: center;
+            Button {
+                text: "↑";
+                min-width: 40px;
+                preferred-height: 36px;
+                clicked => {
+                    AppState.io-chip-click(chip-type, 1, io3-address);
+                }
+            }
+
+            StatusCircle {
+                io-text: "IO3";
+                io-value: io-status[2];
+            }
+
+            Button {
+                text: "↓";
+                min-width: 40px;
+                preferred-height: 36px;
+                clicked => {
+                    AppState.io-chip-click(chip-type, 0, io3-address);
+                }
+            }
+        }
+    }
+}
 
 export component IOControlPanel inherits Rectangle {
-    in-out property <string> io1-low-text: "置低";
-    in-out property <string> io1-high-text: "置高";
-    in-out property <string> io1-display-text: "IO1显示";
-    in-out property <bool> io1-status: false; // false=低电平, true=高电平
-    in-out property <string> io2-low-text: "置低";
-    in-out property <string> io2-high-text: "置高";
-    in-out property <string> io2-display-text: "IO2显示";
-    in-out property <bool> io2-status: false; // false=低电平, true=高电平
-
-    callback io1-low-clicked();
-    callback io1-high-clicked();
-    callback io2-low-clicked();
-    callback io2-high-clicked();
-
     border-radius: 12px;
     border-width: 2px;
     border-color: #d0d0d0;
@@ -22,90 +121,27 @@ export component IOControlPanel inherits Rectangle {
     drop-shadow-blur: 4px;
     drop-shadow-color: #00000020;
 
-    VerticalBox {
-        padding: 12px;
-        spacing: 12px;
+    // 主布局：左右两个芯片面板
+    HorizontalBox {
+        padding: 8px;
+        spacing: 8px;
 
-        // IO1 控制行
-        HorizontalBox {
-            spacing: 8px;
-
-            Button {
-                text: io1-low-text;
-                min-width: 40px;
-                preferred-height: 32px;
-                clicked => {
-                    io1-low-clicked();
-                }
-            }
-
-            Button {
-                text: io1-high-text;
-                min-width: 40px;
-                preferred-height: 32px;
-                clicked => {
-                    io1-high-clicked();
-                }
-            }
-
-            Rectangle {
-                min-width: 40px;
-                preferred-height: 32px;
-                border-radius: 6px;
-                border-width: 1px;
-                border-color: io1-status ? #28a745 : #dc3545;
-                background: io1-status ? #d4edda : #f8d7da;
-
-                Text {
-                    text: io1-display-text;
-                    color: io1-status ? #155724 : #721c24;
-                    font-size: 12px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
+        // 芯片一
+        ChipPanel {
+            chip-name: "一";
+            chip-type: AppState.chip1-type;
+            io-status: AppState.io-status1;
+            io2-address: 16386; // 0x4002
+            io3-address: 16387; // 0x4003
         }
 
-        // IO2 控制行
-        HorizontalBox {
-            spacing: 8px;
-
-            Button {
-                text: io2-low-text;
-                min-width: 40px;
-                preferred-height: 32px;
-                clicked => {
-                    io2-low-clicked();
-                }
-            }
-
-            Button {
-                text: io2-high-text;
-                min-width: 40px;
-                preferred-height: 32px;
-                clicked => {
-                    io2-high-clicked();
-                }
-            }
-
-            Rectangle {
-                min-width: 40px;
-                preferred-height: 32px;
-                border-radius: 6px;
-                border-width: 1px;
-                border-color: io2-status ? #28a745 : #dc3545;
-                background: io2-status ? #d4edda : #f8d7da;
-
-                Text {
-                    text: io2-display-text;
-                    color: io2-status ? #155724 : #721c24;
-                    font-size: 12px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
+        // 芯片二
+        ChipPanel {
+            chip-name: "二";
+            chip-type: AppState.chip2-type;
+            io-status: AppState.io-status2;
+            io2-address: 49154; // 0xC002
+            io3-address: 49155; // 0xC003
         }
     }
 }

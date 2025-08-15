@@ -16,15 +16,10 @@ export global AppState {
     in-out property <string> start-address-value: "";
     in-out property <string> param-value: "";
 
-    // IO控制相关
-    in-out property <string> io1-low: "置低";
-    in-out property <string> io1-high: "置高";
-    in-out property <string> io1-display: "IO1显示";
-    in-out property <bool> io1-status: false;
-    in-out property <string> io2-low: "置低";
-    in-out property <string> io2-high: "置高";
-    in-out property <string> io2-display: "IO2显示";
-    in-out property <bool> io2-status: false;
+
+    // 新的IO状态数组 [IO1, IO2, IO3]
+    in-out property <[int]> io-status1: [0, 0, 0]; // 芯片一IO状态
+    in-out property <[int]> io-status2: [0, 0, 0]; // 芯片二IO状态
 
     // 文件操作相关
     in-out property <string> file-status: "请选择文件...";
@@ -47,5 +42,5 @@ export global AppState {
     callback read-file-clicked();
     callback read-device-clicked();
     callback config-file-clicked();
-
+    callback io-chip-click(string, int, int);
 }

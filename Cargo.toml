@@ -47,3 +47,20 @@ crc = "3.3"
 
 [build-dependencies]
 slint-build = "1.12.1"
+
+
+[profile.dev]
+debug = 0    # 完全移除调试信息
+strip = true # 自动剥离符号信息
+
+opt-level = 1
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+debug = 0           # 完全移除调试信息
+strip = true        # 自动剥离符号信息
+opt-level = "s"     # 比 "s" 更激进的大小优化
+lto = true
+codegen-units = 1
+incremental = false

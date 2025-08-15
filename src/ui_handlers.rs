@@ -1,9 +1,11 @@
-use slint::{Weak, ComponentHandle};
+use slint::{ComponentHandle, Weak};
+use std::time::Duration;
 
-use crate::serial::manager::SerialPortRegistry;
 use crate::chip_detection::detect_all_chips;
 use crate::config;
-use crate::{AppWindow, AppState};
+use crate::serial::manager::SerialPortRegistry;
+use crate::serial::modbus::{ModbusFrame, RegisterType};
+use crate::{AppState, AppWindow};
 
 pub fn setup_ui_handlers(ui: &AppWindow) {
     // 连接按钮点击事件
@@ -13,12 +15,21 @@ pub fn setup_ui_handlers(ui: &AppWindow) {
             start_connect(ui_weak.clone());
         });
     }
-    
+
     // 端口变更事件
     {
         ui.global::<AppState>().on_port_changed(move |new_port| {
             log::info!("端口变更为: {}", new_port);
         });
+    }
+
+    // IO芯片点击事件
+    {
+        let ui_weak = ui.as_weak();
+        ui.global::<AppState>()
+            .on_io_chip_click(move |chip_type, level, address| {
+                handle_io_chip_click(ui_weak.clone(), chip_type.to_string(), level, address);
+            });
     }
 }
 
@@ -30,14 +41,12 @@ fn start_connect(ui_weak: Weak<AppWindow>) {
         log::info!("开始连接... {}", port);
 
         config::get_runtime().spawn(async move {
-        handle_connect_click(ui_weak2, port).await;
-    });
+            handle_connect_click(ui_weak2, port).await;
+        });
     }
-
 }
 
 async fn handle_connect_click(ui_weak: Weak<AppWindow>, port: String) {
-
     let registry = SerialPortRegistry::get_global().await;
 
     if registry.get_port(&port).await.is_none() {
@@ -46,7 +55,7 @@ async fn handle_connect_click(ui_weak: Weak<AppWindow>, port: String) {
 
         // 更新UI状态 - 连接中
         update_ui_status(&ui_weak, "连接中...", "连接中", false, false).await;
-        
+
         // 使用SerialPortRegistry::get_global()
         let registry = SerialPortRegistry::get_global().await;
         match registry.add_port_with_defaults(&port).await {
@@ -54,7 +63,6 @@ async fn handle_connect_click(ui_weak: Weak<AppWindow>, port: String) {
                 update_ui_status(&ui_weak, "连接中", "断开", true, false).await;
 
                 registry.open_all().await;
-
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 if !registry.is_connected(&port).await {
@@ -69,25 +77,32 @@ async fn handle_connect_click(ui_weak: Weak<AppWindow>, port: String) {
                 update_ui_status(&ui_weak, "已连接", "断开", true, false).await;
 
                 // 等待一段时间确保连接稳定
-                
+
                 // 开始芯片检测
                 if let Some(port_manager) = registry.get_port(&port).await {
                     log::info!("开始检测芯片类型...");
-                    
+
                     let (chip1_type, chip2_type) = detect_all_chips(port_manager).await;
-                    
+
                     let chip1_str = chip1_type.to_string();
                     let chip2_str = chip2_type.to_string();
-                    
+
                     // 更新芯片信息
                     update_chip_info(&ui_weak, &chip1_str, &chip2_str).await;
-                    
-                    log::info!("芯片检测完成: 芯片1={:?}, 芯片2={:?}", chip1_type, chip2_type);
+
+                    log::info!(
+                        "芯片检测完成: 芯片1={:?}, 芯片2={:?}",
+                        chip1_type,
+                        chip2_type
+                    );
+
+                    // 启动IO状态轮询
+                    start_io_polling(ui_weak.clone(), port.clone()).await;
                 }
-            },
+            }
             Err(e) => {
                 log::error!("串口连接失败: {}", e);
-                
+
                 // 更新UI状态 - 连接失败
                 update_ui_status(&ui_weak, "连接失败", "连接", false, false).await;
             }
@@ -99,16 +114,22 @@ async fn handle_connect_click(ui_weak: Weak<AppWindow>, port: String) {
 
         // 清空芯片信息并更新UI状态
         clear_chip_info(&ui_weak).await;
-        
+
         log::info!("串口已断开");
     }
 }
 
-async fn update_ui_status(ui_weak: &Weak<AppWindow>, status: &str, label: &str, is_connected: bool, show_chip_info: bool) {
+async fn update_ui_status(
+    ui_weak: &Weak<AppWindow>,
+    status: &str,
+    label: &str,
+    is_connected: bool,
+    show_chip_info: bool,
+) {
     let ui_weak_clone = ui_weak.clone();
     let status = status.to_string();
     let label = label.to_string();
-    
+
     slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_weak_clone.upgrade() {
             ui.global::<AppState>().set_connect_status(status.into());
@@ -116,26 +137,28 @@ async fn update_ui_status(ui_weak: &Weak<AppWindow>, status: &str, label: &str, 
             ui.global::<AppState>().set_is_connected(is_connected);
             ui.global::<AppState>().set_show_chip_info(show_chip_info);
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 async fn update_chip_info(ui_weak: &Weak<AppWindow>, chip1_str: &str, chip2_str: &str) {
     let ui_weak_clone = ui_weak.clone();
     let chip1_str = chip1_str.to_string();
     let chip2_str = chip2_str.to_string();
-    
+
     slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_weak_clone.upgrade() {
             ui.global::<AppState>().set_chip1_type(chip1_str.into());
             ui.global::<AppState>().set_chip2_type(chip2_str.into());
             ui.global::<AppState>().set_show_chip_info(true);
         }
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 async fn clear_chip_info(ui_weak: &Weak<AppWindow>) {
     let ui_weak_clone = ui_weak.clone();
-    
+
     slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_weak_clone.upgrade() {
             ui.global::<AppState>().set_chip1_type("".into());
@@ -145,5 +168,177 @@ async fn clear_chip_info(ui_weak: &Weak<AppWindow>) {
             ui.global::<AppState>().set_connect_status("未连接".into());
             ui.global::<AppState>().set_mcu_label("连接".into());
         }
-    }).unwrap();
+    })
+    .unwrap();
+}
+
+// 处理IO芯片点击事件
+fn handle_io_chip_click(ui_weak: Weak<AppWindow>, chip_type: String, level: i32, address: i32) {
+    // 先从UI中获取端口信息
+    let port = if let Some(ui) = ui_weak.upgrade() {
+        ui.global::<AppState>().get_port_value().to_string()
+    } else {
+        return;
+    };
+
+    config::get_runtime().spawn(async move {
+        let registry = SerialPortRegistry::get_global().await;
+
+        if let Some(port_manager) = registry.get_port(&port).await {
+            // 构建modbus写单个保持寄存器命令 (功能码 0x06)
+            let value = if level == 1 { 1u16 } else { 0u16 };
+            let slave_address = if address >= 0x4000 && address < 0x8000 {
+                1u8
+            } else {
+                1u8
+            };
+
+            let mut data = Vec::new();
+            data.push(((address as u16) >> 8) as u8); // 地址高字节
+            data.push((address as u16) as u8); // 地址低字节
+            data.push((value >> 8) as u8); // 值高字节
+            data.push(value as u8); // 值低字节
+
+            let command = ModbusFrame::new(slave_address, 0x06, data);
+
+            match port_manager
+                .send_modbus_command(&command.to_bytes(), 1000)
+                .await
+            {
+                Ok(_response) => {
+                    log::info!(
+                        "IO设置成功: 芯片={}, 地址=0x{:04X}, 值={}",
+                        chip_type,
+                        address,
+                        level
+                    );
+                }
+                Err(e) => {
+                    log::error!(
+                        "IO设置失败: 芯片={}, 地址=0x{:04X}, 错误={}",
+                        chip_type,
+                        address,
+                        e
+                    );
+                }
+            }
+        }
+    });
+}
+
+// 启动IO状态轮询
+async fn start_io_polling(ui_weak: Weak<AppWindow>, port: String) {
+    let ui_weak_clone = ui_weak.clone();
+
+    config::get_runtime().spawn(async move {
+        poll_io_status(ui_weak_clone, port).await;
+    });
+}
+
+// 轮询IO状态
+async fn poll_io_status(ui_weak: Weak<AppWindow>, port: String) {
+    let registry = SerialPortRegistry::get_global().await;
+    log::info!("开始轮询IO状态: {}", port);
+
+    loop {
+        if let Some(port_manager) = registry.get_port(&port).await {
+            // 读取芯片一的IO状态 (地址 0x4001, 读取3个寄存器)
+            let chip1_result = read_io_registers(port_manager.clone(), 1, 0x4001, 3).await;
+
+            // 读取芯片二的IO状态 (地址 0xC001, 读取3个寄存器)
+            let chip2_result = read_io_registers(port_manager.clone(), 1, 0xC001, 3).await;
+
+            // 更新UI状态
+            update_io_status(&ui_weak, chip1_result, chip2_result).await;
+
+            tokio::time::sleep(Duration::from_millis(5000)).await;
+        } else {
+            log::warn!("端口 {} 不可用，停止轮询", port);
+            break; // 如果端口不可用，退出循环
+        }
+    }
+}
+
+// 读取IO寄存器
+async fn read_io_registers(
+    port_manager: std::sync::Arc<crate::serial::base::SerialPortManager>,
+    slave_address: u8,
+    start_address: u16,
+    quantity: u16,
+) -> Result<Vec<i32>, String> {
+    let command = match ModbusFrame::new_read_request(
+        slave_address,
+        RegisterType::HoldingRegister,
+        start_address,
+        quantity,
+    ) {
+        Ok(cmd) => cmd,
+        Err(e) => return Err(format!("创建命令失败: {}", e)),
+    };
+
+    match port_manager
+        .send_modbus_command(&command.to_bytes(), 1000)
+        .await
+    {
+        Ok(response) => {
+            match ModbusFrame::from_bytes(&response) {
+                Ok(frame) => {
+                    let data = frame.get_data();
+                    if data.len() >= 1 + (quantity as usize * 2) {
+                        let mut values = Vec::new();
+
+                        for i in 0..quantity as usize {
+                            let offset = 1 + i * 2;
+                            if offset + 1 < data.len() {
+                                let word = ((data[offset] as u16) << 8) | (data[offset + 1] as u16);
+                                values.push((word & 1) as i32); // 只取最低位
+                            }
+                        }
+
+                        Ok(values)
+                    } else {
+                        Err("响应数据长度不足".to_string())
+                    }
+                }
+                Err(e) => Err(format!("解析响应失败: {}", e)),
+            }
+        }
+        Err(e) => Err(format!("发送命令失败: {}", e)),
+    }
+}
+
+// 更新IO状态到UI
+async fn update_io_status(
+    ui_weak: &Weak<AppWindow>,
+    chip1_result: Result<Vec<i32>, String>,
+    chip2_result: Result<Vec<i32>, String>,
+) {
+    let ui_weak_clone = ui_weak.clone();
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            match chip1_result {
+                Ok(values) => {
+                    let slint_values: slint::ModelRc<i32> =
+                        slint::ModelRc::new(slint::VecModel::from(values));
+                    ui.global::<AppState>().set_io_status1(slint_values);
+                }
+                Err(e) => {
+                    log::error!("读取芯片一IO状态失败: {}", e);
+                }
+            }
+
+            match chip2_result {
+                Ok(values) => {
+                    let slint_values: slint::ModelRc<i32> =
+                        slint::ModelRc::new(slint::VecModel::from(values));
+                    ui.global::<AppState>().set_io_status2(slint_values);
+                }
+                Err(e) => {
+                    log::error!("读取芯片二IO状态失败: {}", e);
+                }
+            }
+        }
+    })
+    .unwrap();
 }

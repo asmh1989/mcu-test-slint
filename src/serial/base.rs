@@ -193,86 +193,6 @@ impl SerialPortManager {
         }
     }
 
-    // 发送SCPI命令并接收响应
-    pub async fn send_and_receive(
-        &self,
-        command: &[u8],
-        timeout_ms: u64,
-    ) -> anyhow::Result<Vec<u8>> {
-        // 检查连接状态
-        if !self.is_connected.load(Ordering::SeqCst) {
-            return Err(anyhow::anyhow!("Serial port not open"));
-        }
-
-        let mut port_guard = self.port.lock().await;
-        if let Some(port) = port_guard.as_mut() {
-            log::debug!(
-                "发送命令 ({}): {}",
-                self.port_path,
-                String::from_utf8_lossy(command).trim()
-            );
-
-            // 发送命令
-            match port.write_all(command).await {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("发送命令 ({}): 失败: {}", self.port_path, e);
-                    return Err(anyhow::anyhow!("Failed to send command: {}", e));
-                }
-            }
-
-            // 接收响应
-            let mut buffer = vec![0u8; 1024];
-            let timeout = Duration::from_millis(timeout_ms);
-
-            // 使用超时读取响应
-            match time::timeout(timeout, async {
-                let mut response = Vec::new();
-
-                loop {
-                    match port.read(&mut buffer).await {
-                        Ok(n) if n > 0 => {
-                            response.extend_from_slice(&buffer[..n]);
-                            log::info!("接收响应 ({}): 读取到 {} 字节", self.port_path, n);
-                            // 对于Modbus RTU，检查是否接收到完整帧
-                            // 最小帧长度是4字节（地址+功能码+CRC）
-                            if n >= 4 {
-                                break;
-                            }
-                        }
-                        Ok(_) => {
-                            // n == 0 或其他值 - EOF，连接可能已断开
-                            return Err(anyhow::anyhow!("Connection closed"));
-                        }
-                        Err(e) => {
-                            return Err(anyhow::anyhow!("Read error: {}", e));
-                        }
-                    }
-                }
-                Ok::<Vec<u8>, anyhow::Error>(response)
-            })
-            .await
-            {
-                Ok(Ok(data)) => {
-                    // let response_str = String::from_utf8_lossy(&data).trim().to_string();
-                    log::info!("接收Modbus响应 ({}): {:02X?}", self.port_path, data);
-
-                    Ok(data)
-                }
-                Ok(Err(e)) => {
-                    log::error!("读取响应失败 ({}): {}", self.port_path, e);
-                    Err(e)
-                }
-                Err(_) => {
-                    log::warn!("读取响应超时 ({})", self.port_path);
-                    Err(anyhow::anyhow!("Response timeout"))
-                }
-            }
-        } else {
-            Err(anyhow::anyhow!("Serial port not open"))
-        }
-    }
-
     // 发送Modbus命令并接收原始字节响应
     pub async fn send_modbus_command(
         &self,
@@ -304,7 +224,6 @@ impl SerialPortManager {
             // 使用超时读取响应
             match time::timeout(timeout, async {
                 let mut response = Vec::new();
-                let start_time = std::time::Instant::now();
 
                 loop {
                     match port.read(&mut buffer).await {
@@ -313,14 +232,8 @@ impl SerialPortManager {
 
                             // 对于Modbus RTU，检查是否接收到完整帧
                             // 最小帧长度是4字节（地址+功能码+CRC）
-                            if response.len() >= 4 {
-                                // 简单的完整性检查：等待一段时间没有新数据
-                                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-
-                                // 如果超过一定时间没有新数据，认为接收完成
-                                if start_time.elapsed().as_millis() > 50 {
-                                    break;
-                                }
+                            if n >= 4 {
+                                break;
                             }
                         }
                         Ok(_) => {
@@ -333,11 +246,6 @@ impl SerialPortManager {
                         Err(e) => {
                             return Err(anyhow::anyhow!("Read error: {}", e));
                         }
-                    }
-
-                    // 防止无限循环
-                    if start_time.elapsed().as_millis() > timeout_ms as u128 {
-                        break;
                     }
                 }
                 Ok::<Vec<u8>, anyhow::Error>(response)
