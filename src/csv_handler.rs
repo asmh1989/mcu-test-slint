@@ -89,7 +89,7 @@ impl CsvHandler {
 
         // 一对一存储，如果存在则覆盖
         for record in records {
-            let key = format!("{}:{}", record.page_addr, record.register);
+            let key = format!("{}", record.page_addr);
             global_data.insert(key, record);
         }
 
@@ -180,7 +180,7 @@ impl CsvHandler {
     ) -> Result<()> {
         let mut global_data = REGISTER_DATA.lock().await;
 
-        let key = format!("{}:{}", page_addr, register);
+        let key = format!("{}", page_addr);
         if let Some(record) = global_data.get_mut(&key) {
             record.w_value = w_value;
             Ok(())

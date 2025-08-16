@@ -2,11 +2,11 @@ use slint::{ComponentHandle, Weak};
 use std::time::Duration;
 
 use crate::chip_detection::detect_all_chips;
-use crate::config;
 use crate::csv_handler::CsvHandler;
 use crate::serial::manager::SerialPortRegistry;
 use crate::serial::modbus::{ModbusFrame, RegisterType};
 use crate::{AppState, AppWindow};
+use crate::{config, csv_handler};
 
 pub fn setup_ui_handlers(ui: &AppWindow) {
     // 连接按钮点击事件
@@ -54,6 +54,22 @@ pub fn setup_ui_handlers(ui: &AppWindow) {
         let ui_weak = ui.as_weak();
         ui.global::<AppState>().on_write_device_clicked(move || {
             handle_write_device_click(ui_weak.clone());
+        });
+    }
+
+    // 读取地址按钮点击事件
+    {
+        let ui_weak = ui.as_weak();
+        ui.global::<AppState>().on_read_address_clicked(move || {
+            handle_read_address_click(ui_weak.clone());
+        });
+    }
+
+    // 写入地址按钮点击事件
+    {
+        let ui_weak = ui.as_weak();
+        ui.global::<AppState>().on_write_address_clicked(move || {
+            handle_write_address_click(ui_weak.clone());
         });
     }
 }
@@ -183,6 +199,11 @@ async fn update_chip_info(ui_weak: &Weak<AppWindow>, chip1_str: &str, chip2_str:
 
 async fn clear_chip_info(ui_weak: &Weak<AppWindow>) {
     let ui_weak_clone = ui_weak.clone();
+    let _ = csv_handler::CsvHandler::clear_all_data().await;
+
+    let _ = update_table_data_after_read(ui_weak)
+        .await
+        .map_err(|e| e.to_string());
 
     slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_weak_clone.upgrade() {
@@ -192,6 +213,8 @@ async fn clear_chip_info(ui_weak: &Weak<AppWindow>) {
             ui.global::<AppState>().set_is_connected(false);
             ui.global::<AppState>().set_connect_status("未连接".into());
             ui.global::<AppState>().set_mcu_label("连接".into());
+            ui.global::<AppState>().set_param_value("".into());
+            ui.global::<AppState>().set_file_status("".into());
         }
     })
     .unwrap();
@@ -237,6 +260,250 @@ fn handle_io_chip_click(ui_weak: Weak<AppWindow>, chip_type: String, level: i32,
             }
         }
     });
+}
+
+// 处理读取地址按钮点击事件
+fn handle_read_address_click(ui_weak: Weak<AppWindow>) {
+    // 从UI中获取地址和端口信息
+    let (address_str, port) = if let Some(ui) = ui_weak.upgrade() {
+        let address = ui
+            .global::<AppState>()
+            .get_start_address_value()
+            .to_string();
+        let port = ui.global::<AppState>().get_port_value().to_string();
+        (address, port)
+    } else {
+        return;
+    };
+
+    config::get_runtime().spawn(async move {
+        match read_address_operation(&ui_weak, address_str.clone(), port).await {
+            Ok(value) => {
+                // 读取成功，在param-value中显示读取到的值，并更新文件状态
+                let ui_weak_clone = ui_weak.clone();
+                let value_str = format!("0x{:04X}", value);
+                let status_msg = format!("地址 {} 读取成功: {}", address_str, value_str);
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak_clone.upgrade() {
+                        ui.global::<AppState>().set_param_value(value_str.into());
+                        ui.global::<AppState>().set_file_status(status_msg.into());
+                        ui.global::<AppState>()
+                            .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(
+                                40, 167, 69,
+                            ))); // 绿色
+                    }
+                })
+                .unwrap();
+                log::info!("地址读取成功，值: 0x{:04X}", value);
+            }
+            Err(e) => {
+                // 读取失败，在param-value中显示错误信息，并更新文件状态
+                let ui_weak_clone = ui_weak.clone();
+                let error_msg = format!("错误: {}", e);
+                let status_msg = format!("地址 {} 读取失败: {}", address_str, e);
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak_clone.upgrade() {
+                        ui.global::<AppState>().set_param_value(error_msg.into());
+                        ui.global::<AppState>().set_file_status(status_msg.into());
+                        ui.global::<AppState>()
+                            .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(
+                                220, 53, 69,
+                            ))); // 红色
+                    }
+                })
+                .unwrap();
+                log::error!("地址读取失败: {}", e);
+            }
+        }
+    });
+}
+
+// 处理写入地址按钮点击事件
+fn handle_write_address_click(ui_weak: Weak<AppWindow>) {
+    // 从UI中获取地址、值和端口信息
+    let (address_str, value_str, port) = if let Some(ui) = ui_weak.upgrade() {
+        let address = ui
+            .global::<AppState>()
+            .get_start_address_value()
+            .to_string();
+        let value = ui.global::<AppState>().get_param_value().to_string();
+        let port = ui.global::<AppState>().get_port_value().to_string();
+        (address, value, port)
+    } else {
+        return;
+    };
+
+    config::get_runtime().spawn(async move {
+        match write_address_operation(&ui_weak, address_str.clone(), value_str.clone(), port).await
+        {
+            Ok(()) => {
+                // 写入成功，更新文件状态
+                let ui_weak_clone = ui_weak.clone();
+                let status_msg = format!("地址 {} 写入成功: {}", address_str, value_str);
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak_clone.upgrade() {
+                        ui.global::<AppState>().set_file_status(status_msg.into());
+                        ui.global::<AppState>()
+                            .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(
+                                40, 167, 69,
+                            ))); // 绿色
+                    }
+                })
+                .unwrap();
+                log::info!("地址写入成功");
+            }
+            Err(e) => {
+                // 写入失败，在param-value中显示错误信息，并更新文件状态
+                let ui_weak_clone = ui_weak.clone();
+                let error_msg = format!("错误: {}", e);
+                let status_msg = format!("地址 {} 写入失败: {}", address_str, e);
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak_clone.upgrade() {
+                        ui.global::<AppState>().set_param_value(error_msg.into());
+                        ui.global::<AppState>().set_file_status(status_msg.into());
+                        ui.global::<AppState>()
+                            .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(
+                                220, 53, 69,
+                            ))); // 红色
+                    }
+                })
+                .unwrap();
+                log::error!("地址写入失败: {}", e);
+            }
+        }
+    });
+}
+
+// 执行地址读取操作
+async fn read_address_operation(
+    ui_weak: &Weak<AppWindow>,
+    address_str: String,
+    port: String,
+) -> Result<u16, String> {
+    // 验证地址格式是否为4位十六进制
+    if address_str.len() != 4 {
+        return Err("地址必须为4位十六进制字符串".to_string());
+    }
+
+    // 解析十六进制地址
+    let address = u16::from_str_radix(&address_str, 16)
+        .map_err(|_| "地址格式无效，必须为4位十六进制".to_string())?;
+
+    // 获取串口管理器
+    let registry = SerialPortRegistry::get_global().await;
+    let port_manager = registry
+        .get_port(&port)
+        .await
+        .ok_or("串口未连接".to_string())?;
+
+    // 读取寄存器值
+    let value = read_single_register(port_manager, 1, address).await?;
+
+    // 保存到全局HashMap中，key就是地址，结果存在w_value中
+    let address_key = format!("0x{:04X}", address);
+    let value_str = format!("0x{:02X}", value as u8);
+
+    // 更新全局数据
+    let mut global_data = crate::csv_handler::REGISTER_DATA.lock().await;
+
+    if let Some(existing_record) = global_data.get_mut(&address_key) {
+        // 如果key对应的记录已存在，只更新w_value
+        existing_record.w_value = Some(value_str.clone());
+        log::info!("更新现有记录: {} = {}", address_key, value_str);
+    } else {
+        // 如果key不存在，创建新的记录
+        let new_record = crate::csv_handler::RegisterRecord {
+            page_addr: address_key.clone(),
+            register: "".to_string(),
+            r_w: "R".to_string(),
+            value: "".to_string(),
+            w_value: Some(value_str.clone()),
+        };
+        global_data.insert(address_key.clone(), new_record);
+        log::info!("创建新记录: {} = {}", address_key, value_str);
+    }
+
+    drop(global_data); // 释放锁
+
+    // 更新表格数据，同步显示到slint中
+    update_table_data_after_read(ui_weak)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(value)
+}
+
+// 执行地址写入操作
+async fn write_address_operation(
+    ui_weak: &Weak<AppWindow>,
+    address_str: String,
+    value_str: String,
+    port: String,
+) -> Result<(), String> {
+    // 验证地址格式是否为4位十六进制
+    if address_str.len() != 4 {
+        return Err("地址必须为4位十六进制字符串".to_string());
+    }
+
+    // 解析十六进制地址
+    let address = u16::from_str_radix(&address_str, 16)
+        .map_err(|_| "地址格式无效，必须为4位十六进制".to_string())?;
+
+    // 解析要写入的值
+    let value = if value_str.starts_with("0x") || value_str.starts_with("0X") {
+        u16::from_str_radix(&value_str[2..], 16).map_err(|_| "写入值格式无效".to_string())?
+    } else {
+        value_str
+            .parse::<u16>()
+            .map_err(|_| "写入值格式无效".to_string())?
+    };
+
+    // 获取串口管理器
+    let registry = SerialPortRegistry::get_global().await;
+    let port_manager = registry
+        .get_port(&port)
+        .await
+        .ok_or("串口未连接".to_string())?;
+
+    // 写入寄存器值
+    write_single_register(port_manager, 1, address, value).await?;
+
+    // 写入成功后，保存到全局HashMap中，key就是地址，结果存在value字段中
+    let address_key = format!("0x{:04X}", address);
+    let formatted_value_str = format!("0x{:02X}", value as u8);
+
+    // 更新全局数据
+    let mut global_data = crate::csv_handler::REGISTER_DATA.lock().await;
+
+    if let Some(existing_record) = global_data.get_mut(&address_key) {
+        // 如果key对应的记录已存在，只更新value字段
+        existing_record.value = formatted_value_str.clone();
+        log::info!(
+            "更新现有记录的value: {} = {}",
+            address_key,
+            formatted_value_str
+        );
+    } else {
+        // 如果key不存在，创建新的记录
+        let new_record = crate::csv_handler::RegisterRecord {
+            page_addr: address_key.clone(),
+            register: "".to_string(),
+            r_w: "W".to_string(),
+            value: formatted_value_str.clone(),
+            w_value: None,
+        };
+        global_data.insert(address_key.clone(), new_record);
+        log::info!("创建新写入记录: {} = {}", address_key, formatted_value_str);
+    }
+
+    drop(global_data); // 释放锁
+
+    // 更新表格数据，同步显示到slint中
+    update_table_data_after_read(ui_weak)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 // 启动IO状态轮询
@@ -318,7 +585,7 @@ async fn poll_io_status(ui_weak: Weak<AppWindow>, port: String) {
             // 更新UI状态
             update_io_status(&ui_weak, Ok(chip1_values), Ok(chip2_values)).await;
 
-            tokio::time::sleep(Duration::from_millis(50000)).await;
+            tokio::time::sleep(Duration::from_millis(2000)).await;
         } else {
             log::warn!("端口 {} 不可用，停止轮询", port);
             break; // 如果端口不可用，退出循环
