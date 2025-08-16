@@ -5,8 +5,8 @@ import { AppState } from "globals/app-state.slint";
 component StatusCircle inherits Rectangle {
     in property <string> io-text;
     in property <int> io-value;
-    width: 60px;
-    height: 60px;
+    // width: 60px;
+    // height: 60px;
     border-radius: 30px;
     border-width: 2px;
     border-color: io-value == 1 ? #28a745 : #dc3545;
@@ -39,7 +39,7 @@ component ChipPanel inherits Rectangle {
         // 第一行: 芯片标题和IO1状态
         HorizontalBox {
             spacing: 12px;
-            alignment: LayoutAlignment.start;
+            alignment: center;
             Text {
                 text: "芯片" + chip-name;
                 font-size: 14px;
@@ -52,6 +52,15 @@ component ChipPanel inherits Rectangle {
             StatusCircle {
                 io-text: "IO1";
                 io-value: io-status[0];
+            }
+
+            Text {
+                text: "";
+                font-size: 14px;
+                font-weight: 700;
+                color: #333;
+                min-width: 40px;
+                vertical-alignment: center;
             }
         }
 
