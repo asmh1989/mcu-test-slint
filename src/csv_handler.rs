@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 /// CSV文件中的寄存器记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +52,7 @@ impl RegisterRecord {
 }
 
 lazy_static! {
-    pub static ref REGISTER_DATA: Mutex<HashMap<String, Vec<RegisterRecord>>> =
+    pub static ref REGISTER_DATA: Mutex<HashMap<String, RegisterRecord>> =
         Mutex::new(HashMap::new());
 }
 /// CSV文件处理器
@@ -81,31 +81,24 @@ impl CsvHandler {
     }
 
     /// 将解析的数据存储到全局变量中
-    pub fn store_to_global(records: Vec<RegisterRecord>) -> Result<()> {
-        let mut global_data = REGISTER_DATA
-            .lock()
-            .map_err(|e| anyhow!("无法获取全局数据锁: {}", e))?;
+    pub async fn store_to_global(records: Vec<RegisterRecord>) -> Result<()> {
+        let mut global_data = REGISTER_DATA.lock().await;
 
         // 清空现有数据
         global_data.clear();
 
-        // 按页地址分组存储
+        // 一对一存储，如果存在则覆盖
         for record in records {
-            let page_addr = record.page_addr.clone();
-            global_data
-                .entry(page_addr)
-                .or_insert_with(Vec::new)
-                .push(record);
+            let key = format!("{}:{}", record.page_addr, record.register);
+            global_data.insert(key, record);
         }
 
         Ok(())
     }
 
     /// 获取所有数据的表格字符串表示
-    pub fn get_table_string() -> Result<String> {
-        let global_data = REGISTER_DATA
-            .lock()
-            .map_err(|e| anyhow!("无法获取全局数据锁: {}", e))?;
+    pub async fn get_table_string() -> Result<String> {
+        let global_data = REGISTER_DATA.lock().await;
 
         if global_data.is_empty() {
             return Ok("暂无数据".to_string());
@@ -117,19 +110,17 @@ impl CsvHandler {
         table.push_str("页地址\t\t寄存器\t\t读写\t\t值\t\t写入值\n");
         table.push_str("-----------------------------------------------------------\n");
 
-        // 按页地址排序
-        let mut sorted_pages: Vec<_> = global_data.keys().collect();
-        sorted_pages.sort();
+        // 按key排序，然后显示记录
+        let mut sorted_keys: Vec<_> = global_data.keys().collect();
+        sorted_keys.sort();
 
-        for page_addr in sorted_pages {
-            if let Some(records) = global_data.get(page_addr) {
-                for record in records {
-                    let w_value = record.w_value.as_deref().unwrap_or("");
-                    table.push_str(&format!(
-                        "{}\t\t{}\t\t{}\t\t{}\t\t{}\n",
-                        record.page_addr, record.register, record.r_w, record.value, w_value
-                    ));
-                }
+        for key in sorted_keys {
+            if let Some(record) = global_data.get(key) {
+                let w_value = record.w_value.as_deref().unwrap_or("");
+                table.push_str(&format!(
+                    "{}\t\t{}\t\t{}\t\t{}\t\t{}\n",
+                    record.page_addr, record.register, record.r_w, record.value, w_value
+                ));
             }
         }
 
@@ -137,10 +128,8 @@ impl CsvHandler {
     }
 
     /// 获取Slint标准表格数据
-    pub fn get_slint_table_data() -> Result<Vec<Vec<slint::SharedString>>> {
-        let global_data = REGISTER_DATA
-            .lock()
-            .map_err(|e| anyhow!("无法获取全局数据锁: {}", e))?;
+    pub async fn get_slint_table_data() -> Result<Vec<Vec<slint::SharedString>>> {
+        let global_data = REGISTER_DATA.lock().await;
 
         if global_data.is_empty() {
             return Ok(vec![]);
@@ -148,23 +137,21 @@ impl CsvHandler {
 
         let mut table_data = Vec::new();
 
-        // 按页地址排序
-        let mut sorted_pages: Vec<_> = global_data.keys().collect();
-        sorted_pages.sort();
+        // 按key排序
+        let mut sorted_keys: Vec<_> = global_data.keys().collect();
+        sorted_keys.sort();
 
-        for page_addr in sorted_pages {
-            if let Some(records) = global_data.get(page_addr) {
-                for record in records {
-                    let w_value = record.w_value.as_deref().unwrap_or("");
-                    let row = vec![
-                        record.page_addr.clone().into(),
-                        record.register.clone().into(),
-                        record.r_w.clone().into(),
-                        record.value.clone().into(),
-                        w_value.to_string().into(),
-                    ];
-                    table_data.push(row);
-                }
+        for key in sorted_keys {
+            if let Some(record) = global_data.get(key) {
+                let w_value = record.w_value.as_deref().unwrap_or("");
+                let row = vec![
+                    record.page_addr.clone().into(),
+                    record.register.clone().into(),
+                    record.r_w.clone().into(),
+                    record.value.clone().into(),
+                    w_value.to_string().into(),
+                ];
+                table_data.push(row);
             }
         }
 
@@ -172,55 +159,72 @@ impl CsvHandler {
     }
 
     /// 根据页地址获取寄存器记录
-    pub fn get_records_by_page(page_addr: &str) -> Result<Vec<RegisterRecord>> {
-        let global_data = REGISTER_DATA
-            .lock()
-            .map_err(|e| anyhow!("无法获取全局数据锁: {}", e))?;
+    pub async fn get_records_by_page(page_addr: &str) -> Result<Vec<RegisterRecord>> {
+        let global_data = REGISTER_DATA.lock().await;
 
-        Ok(global_data.get(page_addr).cloned().unwrap_or_default())
-    }
-
-    /// 更新寄存器的写入值
-    pub fn update_w_value(page_addr: &str, register: &str, w_value: Option<String>) -> Result<()> {
-        let mut global_data = REGISTER_DATA
-            .lock()
-            .map_err(|e| anyhow!("无法获取全局数据锁: {}", e))?;
-
-        if let Some(records) = global_data.get_mut(page_addr) {
-            for record in records.iter_mut() {
-                if record.register == register {
-                    record.w_value = w_value;
-                    return Ok(());
-                }
+        let mut records = Vec::new();
+        for (_key, record) in global_data.iter() {
+            if record.page_addr == page_addr {
+                records.push(record.clone());
             }
         }
 
-        Err(anyhow!("未找到指定的寄存器: {}:{}", page_addr, register))
+        Ok(records)
+    }
+
+    /// 更新寄存器的写入值
+    pub async fn update_w_value(
+        page_addr: &str,
+        register: &str,
+        w_value: Option<String>,
+    ) -> Result<()> {
+        let mut global_data = REGISTER_DATA.lock().await;
+
+        let key = format!("{}:{}", page_addr, register);
+        if let Some(record) = global_data.get_mut(&key) {
+            record.w_value = w_value;
+            Ok(())
+        } else {
+            Err(anyhow!("未找到指定的寄存器: {}:{}", page_addr, register))
+        }
+    }
+
+    /// 获取所有寄存器记录
+    pub async fn get_all_records() -> Result<Vec<RegisterRecord>> {
+        let global_data = REGISTER_DATA.lock().await;
+
+        let mut records: Vec<RegisterRecord> = global_data.values().cloned().collect();
+
+        // 根据 page_addr 排序
+        records.sort_by_key(|record| record.page_addr.clone());
+
+        Ok(records)
     }
 
     /// 获取所有页地址
-    pub fn get_all_page_addresses() -> Result<Vec<String>> {
-        let global_data = REGISTER_DATA
-            .lock()
-            .map_err(|e| anyhow!("无法获取全局数据锁: {}", e))?;
+    pub async fn get_all_page_addresses() -> Result<Vec<String>> {
+        let global_data = REGISTER_DATA.lock().await;
 
-        let mut pages: Vec<String> = global_data.keys().cloned().collect();
+        let mut pages: Vec<String> = global_data
+            .values()
+            .map(|record| record.page_addr.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
         pages.sort();
         Ok(pages)
     }
 
     /// 清空所有数据
-    pub fn clear_all_data() -> Result<()> {
-        let mut global_data = REGISTER_DATA
-            .lock()
-            .map_err(|e| anyhow!("无法获取全局数据锁: {}", e))?;
+    pub async fn clear_all_data() -> Result<()> {
+        let mut global_data = REGISTER_DATA.lock().await;
 
         global_data.clear();
         Ok(())
     }
 
     /// 完整的文件读取流程
-    pub fn read_csv_file() -> Result<String> {
+    pub async fn read_csv_file() -> Result<String> {
         // 1. 选择文件
         let file_path = Self::select_csv_file().ok_or_else(|| anyhow!("未选择文件"))?;
 
@@ -231,10 +235,10 @@ impl CsvHandler {
         log::info!("解析到 {} 条记录", records.len());
 
         // 3. 存储到全局变量
-        Self::store_to_global(records)?;
+        Self::store_to_global(records).await?;
 
         // 4. 生成表格字符串
-        let table_string = Self::get_table_string()?;
+        let table_string = Self::get_table_string().await?;
 
         Ok(table_string)
     }
@@ -265,10 +269,10 @@ mod tests {
         assert_eq!(records[0].w_value, None);
     }
 
-    #[test]
-    fn test_store_and_retrieve() {
+    #[tokio::test]
+    async fn test_store_and_retrieve() {
         // 清空数据
-        CsvHandler::clear_all_data().unwrap();
+        CsvHandler::clear_all_data().await.unwrap();
 
         // 创建测试数据
         let records = vec![
@@ -293,27 +297,27 @@ mod tests {
         ];
 
         // 存储数据
-        CsvHandler::store_to_global(records).unwrap();
+        CsvHandler::store_to_global(records).await.unwrap();
 
         // 检索数据
-        let page_0000_records = CsvHandler::get_records_by_page("0x0000").unwrap();
+        let page_0000_records = CsvHandler::get_records_by_page("0x0000").await.unwrap();
         assert_eq!(page_0000_records.len(), 2);
 
-        let page_1000_records = CsvHandler::get_records_by_page("0x1000").unwrap();
+        let page_1000_records = CsvHandler::get_records_by_page("0x1000").await.unwrap();
         assert_eq!(page_1000_records.len(), 1);
 
         // 获取所有页地址
-        let all_pages = CsvHandler::get_all_page_addresses().unwrap();
+        let all_pages = CsvHandler::get_all_page_addresses().await.unwrap();
         println!("实际页地址: {:?}", all_pages);
         assert_eq!(all_pages.len(), 2);
         assert!(all_pages.contains(&"0x0000".to_string()));
         assert!(all_pages.contains(&"0x1000".to_string()));
     }
 
-    #[test]
-    fn test_update_w_value() {
+    #[tokio::test]
+    async fn test_update_w_value() {
         // 清空数据
-        CsvHandler::clear_all_data().unwrap();
+        CsvHandler::clear_all_data().await.unwrap();
 
         // 创建测试数据
         let records = vec![RegisterRecord::new(
@@ -324,13 +328,15 @@ mod tests {
         )];
 
         // 存储数据
-        CsvHandler::store_to_global(records).unwrap();
+        CsvHandler::store_to_global(records).await.unwrap();
 
         // 更新写入值
-        CsvHandler::update_w_value("0x0000", "CHIPID", Some("0x80".to_string())).unwrap();
+        CsvHandler::update_w_value("0x0000", "CHIPID", Some("0x80".to_string()))
+            .await
+            .unwrap();
 
         // 验证更新
-        let updated_records = CsvHandler::get_records_by_page("0x0000").unwrap();
+        let updated_records = CsvHandler::get_records_by_page("0x0000").await.unwrap();
         assert_eq!(updated_records[0].w_value, Some("0x80".to_string()));
     }
 }

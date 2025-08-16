@@ -40,6 +40,14 @@ pub fn setup_ui_handlers(ui: &AppWindow) {
             handle_read_file_click(ui_weak.clone());
         });
     }
+
+    // 读取器件按钮点击事件
+    {
+        let ui_weak = ui.as_weak();
+        ui.global::<AppState>().on_read_device_clicked(move || {
+            handle_read_device_click(ui_weak.clone());
+        });
+    }
 }
 
 fn start_connect(ui_weak: Weak<AppWindow>) {
@@ -302,7 +310,7 @@ async fn poll_io_status(ui_weak: Weak<AppWindow>, port: String) {
             // 更新UI状态
             update_io_status(&ui_weak, Ok(chip1_values), Ok(chip2_values)).await;
 
-            tokio::time::sleep(Duration::from_millis(5000)).await;
+            tokio::time::sleep(Duration::from_millis(50000)).await;
         } else {
             log::warn!("端口 {} 不可用，停止轮询", port);
             break; // 如果端口不可用，退出循环
@@ -419,7 +427,7 @@ fn handle_read_file_click(ui_weak: Weak<AppWindow>) {
     // 在后台线程中执行文件操作
     config::get_runtime().spawn(async move {
         // 执行CSV文件读取操作
-        match CsvHandler::read_csv_file() {
+        match CsvHandler::read_csv_file().await {
             Ok(table_content) => {
                 log::info!("CSV文件读取成功，共解析 {} 字符", table_content.len());
 
@@ -442,7 +450,7 @@ async fn update_file_ui_success(ui_weak: &Weak<AppWindow>, content: String) {
     let content_clone = content.clone();
 
     // 获取表格数据
-    let table_data = match CsvHandler::get_slint_table_data() {
+    let table_data = match CsvHandler::get_slint_table_data().await {
         Ok(data) => data,
         Err(e) => {
             log::error!("获取表格数据失败: {}", e);
@@ -504,6 +512,198 @@ async fn update_file_ui_error(ui_weak: &Weak<AppWindow>, error_msg: String) {
             let empty_table = slint::VecModel::from(vec![]);
             ui.global::<AppState>()
                 .set_csv_table_data(slint::ModelRc::new(empty_table));
+        }
+    })
+    .unwrap();
+}
+
+// 处理读取器件按钮点击事件
+fn handle_read_device_click(ui_weak: Weak<AppWindow>) {
+    // 提前获取串口路径，避免在异步任务中访问UI
+    let port_path = if let Some(ui) = ui_weak.upgrade() {
+        ui.global::<AppState>().get_port_value().to_string()
+    } else {
+        log::error!("UI界面已关闭");
+        return;
+    };
+
+    let ui_weak_clone = ui_weak.clone();
+
+    // 在后台线程中执行器件读取操作
+    config::get_runtime().spawn(async move {
+        // 执行器件读取操作
+        match read_device_registers(&ui_weak_clone, &port_path).await {
+            Ok(_) => {
+                log::info!("器件读取完成");
+                // 更新UI状态为成功
+                update_device_read_ui_success(&ui_weak_clone).await;
+            }
+            Err(e) => {
+                log::error!("器件读取失败: {}", e);
+                // 更新UI错误状态
+                update_device_read_ui_error(&ui_weak_clone, e.to_string()).await;
+            }
+        }
+    });
+}
+
+// 执行器件寄存器读取操作
+async fn read_device_registers(ui_weak: &Weak<AppWindow>, port_path: &str) -> anyhow::Result<()> {
+    use crate::csv_handler::CsvHandler;
+    use crate::serial::manager::SerialPortRegistry;
+
+    // 获取串口注册表
+    let registry = SerialPortRegistry::get_global().await;
+    let records = CsvHandler::get_all_records().await?;
+
+    // 获取当前连接的串口
+    let port_manager = if let Some(manager) = registry.get_port(port_path).await {
+        if manager.is_open() {
+            manager
+        } else {
+            return Err(anyhow::anyhow!("串口 {} 未连接", port_path));
+        }
+    } else {
+        return Err(anyhow::anyhow!("串口 {} 不存在", port_path));
+    };
+
+    let total_pages = records.len();
+    let mut processed = 0;
+
+    // 获取该页的所有寄存器记录
+
+    for record in records {
+        let page_addr = record.page_addr.clone();
+
+        update_read_progress_status(ui_weak, processed, total_pages, &page_addr).await;
+        // 只读取标记为可读的寄存器
+        if record.r_w.to_uppercase().contains('R') {
+            // 解析页地址（假设是十六进制格式）
+            let page_addr_u16 = if page_addr.starts_with("0x") || page_addr.starts_with("0X") {
+                u16::from_str_radix(&page_addr[2..], 16)
+                    .map_err(|_| anyhow::anyhow!("无效的页地址格式: {}", page_addr))?
+            } else {
+                page_addr
+                    .parse::<u16>()
+                    .map_err(|_| anyhow::anyhow!("无效的页地址: {}", page_addr))?
+            };
+
+            match read_single_register(port_manager.clone(), 1, page_addr_u16).await {
+                Ok(value) => {
+                    // 更新寄存器的w_value
+                    let hex_value = format!("0x{:02X}", value as u8);
+
+                    log::info!(
+                        "读取寄存器成功: {}:{} = {}",
+                        page_addr,
+                        record.register,
+                        hex_value
+                    );
+                    if let Err(e) =
+                        CsvHandler::update_w_value(&page_addr, &record.register, Some(hex_value))
+                            .await
+                    {
+                        log::warn!("更新寄存器值失败: {}", e);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("读取寄存器失败 {}:{} - {}", page_addr, record.register, e);
+                }
+            }
+
+            // 添加小延时避免过于频繁的通信
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            processed += 1;
+        }
+    }
+
+    // 完成后更新表格数据
+    update_table_data_after_read(ui_weak).await?;
+
+    Ok(())
+}
+
+// 更新读取进度状态
+async fn update_read_progress_status(
+    ui_weak: &Weak<AppWindow>,
+    processed: usize,
+    total: usize,
+    current_page: &str,
+) {
+    let ui_weak_clone = ui_weak.clone();
+    let status_text = format!(
+        "正在读取器件数据... ({}/{}): {}",
+        processed + 1,
+        total,
+        current_page
+    );
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.global::<AppState>().set_file_status(status_text.into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(23, 162, 184))); // 蓝色
+        }
+    })
+    .unwrap();
+}
+
+// 读取完成后更新表格数据
+async fn update_table_data_after_read(ui_weak: &Weak<AppWindow>) -> anyhow::Result<()> {
+    // 获取更新后的表格数据
+    let table_data = CsvHandler::get_slint_table_data().await?;
+    let ui_weak_clone = ui_weak.clone();
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            // 更新表格数据
+            let table_model = slint::VecModel::from(
+                table_data
+                    .into_iter()
+                    .map(|row| {
+                        let row_model = slint::VecModel::from(
+                            row.into_iter()
+                                .map(|cell| slint::StandardListViewItem::from(cell))
+                                .collect::<Vec<_>>(),
+                        );
+                        slint::ModelRc::new(row_model)
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            ui.global::<AppState>()
+                .set_csv_table_data(slint::ModelRc::new(table_model));
+        }
+    })
+    .unwrap();
+
+    Ok(())
+}
+
+// 更新器件读取UI状态 - 成功
+async fn update_device_read_ui_success(ui_weak: &Weak<AppWindow>) {
+    let ui_weak_clone = ui_weak.clone();
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.global::<AppState>()
+                .set_file_status("器件读取完成".into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(40, 167, 69))); // 绿色
+        }
+    })
+    .unwrap();
+}
+
+// 更新器件读取UI状态 - 错误
+async fn update_device_read_ui_error(ui_weak: &Weak<AppWindow>, error_msg: String) {
+    let ui_weak_clone = ui_weak.clone();
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.global::<AppState>()
+                .set_file_status(format!("器件读取失败: {}", error_msg).into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(220, 53, 69))); // 红色
         }
     })
     .unwrap();
