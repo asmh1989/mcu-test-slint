@@ -8,24 +8,19 @@ export component ConnectionPanel inherits Rectangle {
     in-out property <string> chip1-type: "";
     in-out property <string> chip2-type: "";
     in-out property <bool> show-chip-info: true;
-
     callback connect-clicked();
     callback port-changed(string);
-
     border-radius: 12px;
     border-width: 2px;
     border-color: #d0d0d0;
     background: #f8f9fa;
     drop-shadow-blur: 4px;
     drop-shadow-color: #00000020;
-
     VerticalBox {
         padding: 8px;
         spacing: 4px;
-
         HorizontalBox {
             spacing: 8px;
-
             Button {
                 text: mcu-label-text;
                 min-width: 40px;
@@ -49,7 +44,6 @@ export component ConnectionPanel inherits Rectangle {
                 border-width: 1px;
                 border-color: is-connected ? #28a745 : #dc3545;
                 background: is-connected ? #d4edda : #f8d7da;
-
                 Text {
                     text: connect-status-text;
                     color: is-connected ? #155724 : #721c24;
@@ -61,47 +55,46 @@ export component ConnectionPanel inherits Rectangle {
             }
         }
 
-        if !show-chip-info: Rectangle {
+        Rectangle {
             height: 40%;
-            width: 10px;
-        }
+            
 
         // 芯片信息显示区域 - 仅在连接成功且有芯片信息时显示
-        if show-chip-info : HorizontalBox {
-            spacing: 8px;
-            height: 40%;
-
-            Rectangle {
-                min-width: 40px;
+        if show-chip-info: HorizontalBox {
+                spacing: 8px;
+                alignment: center;
+                Rectangle {
+                    width: 20%;  // 使用百分比宽度替代固定最小宽度
                 border-radius: 4px;
-                border-width: 1px;
-                border-color: #007bff;
-                background: #e3f2fd;
-
-                Text {
-                    text: "芯片1: " + chip1-type;
-                    color: #1565c0;
-                    font-size: 11px;
-                    font-weight: 500;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                    border-width: 1px;
+                    border-color: #007bff;
+                    background: #e3f2fd;
+                    Text {
+                        text: "芯片1: " + chip1-type;
+                        color: #1565c0;
+                        font-size: 11px;
+                        font-weight: 500;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;  // 文本过长时使用省略号
                 }
-            }
+                }
 
-            Rectangle {
-                min-width: 40px;
+                Rectangle {
+                    width: 20%;  // 使用百分比宽度替代固定最小宽度
                 border-radius: 4px;
-                border-width: 1px;
-                border-color: #007bff;
-                background: #e3f2fd;
-
-                Text {
-                    text: "芯片2: " + chip2-type;
-                    color: #1565c0;
-                    font-size: 11px;
-                    font-weight: 500;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                    border-width: 1px;
+                    border-color: #007bff;
+                    background: #e3f2fd;
+                    Text {
+                        text: "芯片2: " + chip2-type;
+                        color: #1565c0;
+                        font-size: 11px;
+                        font-weight: 500;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;  // 文本过长时使用省略号
+                }
                 }
             }
         }

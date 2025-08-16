@@ -5,8 +5,8 @@ import { AppState } from "globals/app-state.slint";
 component StatusCircle inherits Rectangle {
     in property <string> io-text;
     in property <int> io-value;
-    // width: 60px;
-    // height: 60px;
+    width: 60px;
+    height: 60px;
     border-radius: 30px;
     border-width: 2px;
     border-color: io-value == 1 ? #28a745 : #dc3545;
