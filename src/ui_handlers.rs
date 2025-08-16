@@ -285,7 +285,6 @@ fn handle_read_address_click(ui_weak: Weak<AppWindow>) {
                 let status_msg = format!("地址 {} 读取成功: {}", address_str, value_str);
                 slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak_clone.upgrade() {
-                        ui.global::<AppState>().set_param_value(value_str.into());
                         ui.global::<AppState>().set_file_status(status_msg.into());
                         ui.global::<AppState>()
                             .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(
@@ -299,11 +298,9 @@ fn handle_read_address_click(ui_weak: Weak<AppWindow>) {
             Err(e) => {
                 // 读取失败，在param-value中显示错误信息，并更新文件状态
                 let ui_weak_clone = ui_weak.clone();
-                let error_msg = format!("错误: {}", e);
                 let status_msg = format!("地址 {} 读取失败: {}", address_str, e);
                 slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak_clone.upgrade() {
-                        ui.global::<AppState>().set_param_value(error_msg.into());
                         ui.global::<AppState>().set_file_status(status_msg.into());
                         ui.global::<AppState>()
                             .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(
@@ -355,11 +352,9 @@ fn handle_write_address_click(ui_weak: Weak<AppWindow>) {
             Err(e) => {
                 // 写入失败，在param-value中显示错误信息，并更新文件状态
                 let ui_weak_clone = ui_weak.clone();
-                let error_msg = format!("错误: {}", e);
                 let status_msg = format!("地址 {} 写入失败: {}", address_str, e);
                 slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak_clone.upgrade() {
-                        ui.global::<AppState>().set_param_value(error_msg.into());
                         ui.global::<AppState>().set_file_status(status_msg.into());
                         ui.global::<AppState>()
                             .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(
