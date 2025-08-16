@@ -185,27 +185,15 @@ fn handle_io_chip_click(ui_weak: Weak<AppWindow>, chip_type: String, level: i32,
         let registry = SerialPortRegistry::get_global().await;
 
         if let Some(port_manager) = registry.get_port(&port).await {
-            // 构建modbus写单个保持寄存器命令 (功能码 0x06)
             let value = if level == 1 { 1u16 } else { 0u16 };
             let slave_address = if address >= 0x4000 && address < 0x8000 {
                 1u8
             } else {
-                1u8
+                2u8
             };
 
-            let mut data = Vec::new();
-            data.push(((address as u16) >> 8) as u8); // 地址高字节
-            data.push((address as u16) as u8); // 地址低字节
-            data.push((value >> 8) as u8); // 值高字节
-            data.push(value as u8); // 值低字节
-
-            let command = ModbusFrame::new(slave_address, 0x06, data);
-
-            match port_manager
-                .send_modbus_command(&command.to_bytes(), 1000)
-                .await
-            {
-                Ok(_response) => {
+            match write_single_register(port_manager, slave_address, address as u16, value).await {
+                Ok(()) => {
                     log::info!(
                         "IO设置成功: 芯片={}, 地址=0x{:04X}, 值={}",
                         chip_type,
@@ -242,14 +230,68 @@ async fn poll_io_status(ui_weak: Weak<AppWindow>, port: String) {
 
     loop {
         if let Some(port_manager) = registry.get_port(&port).await {
-            // 读取芯片一的IO状态 (地址 0x4001, 读取3个寄存器)
-            let chip1_result = read_io_registers(port_manager.clone(), 1, 0x4001, 3).await;
+            // 逐个读取芯片一的IO状态
+            let mut chip1_values = Vec::new();
 
-            // 读取芯片二的IO状态 (地址 0xC001, 读取3个寄存器)
-            let chip2_result = read_io_registers(port_manager.clone(), 1, 0xC001, 3).await;
+            // 读取芯片一 IO1 (0x4001)
+            match read_single_register(port_manager.clone(), 1, 0x4001).await {
+                Ok(value) => chip1_values.push((value & 1) as i32),
+                Err(e) => {
+                    log::error!("读取芯片一IO1失败: {}", e);
+                    chip1_values.push(0);
+                }
+            }
+
+            // 读取芯片一 IO2 (0x4002)
+            match read_single_register(port_manager.clone(), 1, 0x4002).await {
+                Ok(value) => chip1_values.push((value & 1) as i32),
+                Err(e) => {
+                    log::error!("读取芯片一IO2失败: {}", e);
+                    chip1_values.push(0);
+                }
+            }
+
+            // 读取芯片一 IO3 (0x4003)
+            match read_single_register(port_manager.clone(), 1, 0x4003).await {
+                Ok(value) => chip1_values.push((value & 1) as i32),
+                Err(e) => {
+                    log::error!("读取芯片一IO3失败: {}", e);
+                    chip1_values.push(0);
+                }
+            }
+
+            // 逐个读取芯片二的IO状态
+            let mut chip2_values = Vec::new();
+
+            // 读取芯片二 IO1 (0xC001)
+            match read_single_register(port_manager.clone(), 1, 0xC001).await {
+                Ok(value) => chip2_values.push((value & 1) as i32),
+                Err(e) => {
+                    log::error!("读取芯片二IO1失败: {}", e);
+                    chip2_values.push(0);
+                }
+            }
+
+            // 读取芯片二 IO2 (0xC002)
+            match read_single_register(port_manager.clone(), 1, 0xC002).await {
+                Ok(value) => chip2_values.push((value & 1) as i32),
+                Err(e) => {
+                    log::error!("读取芯片二IO2失败: {}", e);
+                    chip2_values.push(0);
+                }
+            }
+
+            // 读取芯片二 IO3 (0xC003)
+            match read_single_register(port_manager.clone(), 1, 0xC003).await {
+                Ok(value) => chip2_values.push((value & 1) as i32),
+                Err(e) => {
+                    log::error!("读取芯片二IO3失败: {}", e);
+                    chip2_values.push(0);
+                }
+            }
 
             // 更新UI状态
-            update_io_status(&ui_weak, chip1_result, chip2_result).await;
+            update_io_status(&ui_weak, Ok(chip1_values), Ok(chip2_values)).await;
 
             tokio::time::sleep(Duration::from_millis(5000)).await;
         } else {
@@ -259,21 +301,20 @@ async fn poll_io_status(ui_weak: Weak<AppWindow>, port: String) {
     }
 }
 
-// 读取IO寄存器
-async fn read_io_registers(
+// 通用读单个寄存器方法
+async fn read_single_register(
     port_manager: std::sync::Arc<crate::serial::base::SerialPortManager>,
     slave_address: u8,
-    start_address: u16,
-    quantity: u16,
-) -> Result<Vec<i32>, String> {
+    register_address: u16,
+) -> Result<u16, String> {
     let command = match ModbusFrame::new_read_request(
         slave_address,
         RegisterType::HoldingRegister,
-        start_address,
-        quantity,
+        register_address,
+        1, // 读取1个寄存器
     ) {
         Ok(cmd) => cmd,
-        Err(e) => return Err(format!("创建命令失败: {}", e)),
+        Err(e) => return Err(format!("创建读命令失败: {}", e)),
     };
 
     match port_manager
@@ -284,18 +325,10 @@ async fn read_io_registers(
             match ModbusFrame::from_bytes(&response) {
                 Ok(frame) => {
                     let data = frame.get_data();
-                    if data.len() >= 1 + (quantity as usize * 2) {
-                        let mut values = Vec::new();
-
-                        for i in 0..quantity as usize {
-                            let offset = 1 + i * 2;
-                            if offset + 1 < data.len() {
-                                let word = ((data[offset] as u16) << 8) | (data[offset + 1] as u16);
-                                values.push((word & 1) as i32); // 只取最低位
-                            }
-                        }
-
-                        Ok(values)
+                    if data.len() >= 3 {
+                        // 数据格式: [字节数, 高字节, 低字节]
+                        let word = ((data[1] as u16) << 8) | (data[2] as u16);
+                        Ok(word)
                     } else {
                         Err("响应数据长度不足".to_string())
                     }
@@ -304,6 +337,33 @@ async fn read_io_registers(
             }
         }
         Err(e) => Err(format!("发送命令失败: {}", e)),
+    }
+}
+
+// 通用写单个寄存器方法
+async fn write_single_register(
+    port_manager: std::sync::Arc<crate::serial::base::SerialPortManager>,
+    slave_address: u8,
+    register_address: u16,
+    value: u16,
+) -> Result<(), String> {
+    let mut data = Vec::new();
+    data.push((register_address >> 8) as u8); // 地址高字节
+    data.push(register_address as u8); // 地址低字节
+    data.push((value >> 8) as u8); // 值高字节
+    data.push(value as u8); // 值低字节
+
+    let command = ModbusFrame::new(slave_address, 0x06, data); // 功能码 0x06 写单个保持寄存器
+
+    match port_manager
+        .send_modbus_command(&command.to_bytes(), 1000)
+        .await
+    {
+        Ok(response) => match ModbusFrame::from_bytes(&response) {
+            Ok(_frame) => Ok(()),
+            Err(e) => Err(format!("解析写响应失败: {}", e)),
+        },
+        Err(e) => Err(format!("发送写命令失败: {}", e)),
     }
 }
 
