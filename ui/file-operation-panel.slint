@@ -20,7 +20,7 @@ export component FileOperationPanel inherits Rectangle {
     ];
     callback read-file-clicked();
     callback read-device-clicked();
-    callback config-file-clicked();
+    callback write-device-clicked();
     border-radius: 12px;
     border-width: 2px;
     border-color: #d0d0d0;
@@ -79,7 +79,7 @@ export component FileOperationPanel inherits Rectangle {
                     text: config-file-button-text;
                     preferred-height: 48px;
                     clicked => {
-                        config-file-clicked();
+                        write-device-clicked();
                     }
                 }
             }

@@ -48,6 +48,14 @@ pub fn setup_ui_handlers(ui: &AppWindow) {
             handle_read_device_click(ui_weak.clone());
         });
     }
+
+    // 写入器件按钮点击事件
+    {
+        let ui_weak = ui.as_weak();
+        ui.global::<AppState>().on_write_device_clicked(move || {
+            handle_write_device_click(ui_weak.clone());
+        });
+    }
 }
 
 fn start_connect(ui_weak: Weak<AppWindow>) {
@@ -604,10 +612,17 @@ async fn read_device_registers(ui_weak: &Weak<AppWindow>, port_path: &str) -> an
                             .await
                     {
                         log::warn!("更新寄存器值失败: {}", e);
+                        return Err(anyhow::anyhow!("更新寄存器值失败: {}", e));
                     }
                 }
                 Err(e) => {
                     log::warn!("读取寄存器失败 {}:{} - {}", page_addr, record.register, e);
+                    return Err(anyhow::anyhow!(
+                        "读取寄存器失败 {}:{} - {}",
+                        page_addr,
+                        record.register,
+                        e
+                    ));
                 }
             }
 
@@ -702,6 +717,195 @@ async fn update_device_read_ui_error(ui_weak: &Weak<AppWindow>, error_msg: Strin
         if let Some(ui) = ui_weak_clone.upgrade() {
             ui.global::<AppState>()
                 .set_file_status(format!("器件读取失败: {}", error_msg).into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(220, 53, 69))); // 红色
+        }
+    })
+    .unwrap();
+}
+
+// 处理写入器件按钮点击事件
+fn handle_write_device_click(ui_weak: Weak<AppWindow>) {
+    // 提前获取串口路径，避免在异步任务中访问UI
+    let port_path = if let Some(ui) = ui_weak.upgrade() {
+        ui.global::<AppState>().get_port_value().to_string()
+    } else {
+        log::error!("UI界面已关闭");
+        return;
+    };
+
+    let ui_weak_clone = ui_weak.clone();
+
+    // 在后台线程中执行器件写入操作
+    config::get_runtime().spawn(async move {
+        // 执行器件写入操作
+        match write_device_registers(&ui_weak_clone, &port_path).await {
+            Ok(_) => {
+                log::info!("器件写入完成");
+                // 更新UI状态为成功
+                update_device_write_ui_success(&ui_weak_clone).await;
+            }
+            Err(e) => {
+                log::error!("器件写入失败: {}", e);
+                // 更新UI错误状态
+                update_device_write_ui_error(&ui_weak_clone, e.to_string()).await;
+            }
+        }
+    });
+}
+
+// 执行器件寄存器写入操作
+async fn write_device_registers(ui_weak: &Weak<AppWindow>, port_path: &str) -> anyhow::Result<()> {
+    use crate::csv_handler::CsvHandler;
+    use crate::serial::manager::SerialPortRegistry;
+
+    // 获取所有寄存器记录
+    let all_records = CsvHandler::get_all_records().await?;
+    if all_records.is_empty() {
+        return Err(anyhow::anyhow!("没有找到寄存器数据，请先读取文件"));
+    }
+
+    // 过滤只有RW（可读写）的记录
+    let writable_records: Vec<_> = all_records
+        .into_iter()
+        .filter(|record| {
+            record.r_w.to_uppercase().contains("RW") || record.r_w.to_uppercase() == "W"
+        })
+        .collect();
+
+    if writable_records.is_empty() {
+        return Err(anyhow::anyhow!("没有找到可写入的寄存器"));
+    }
+
+    // 获取串口注册表
+    let registry = SerialPortRegistry::get_global().await;
+
+    // 获取当前连接的串口
+    let port_manager = if let Some(manager) = registry.get_port(port_path).await {
+        if manager.is_open() {
+            manager
+        } else {
+            return Err(anyhow::anyhow!("串口 {} 未连接", port_path));
+        }
+    } else {
+        return Err(anyhow::anyhow!("串口 {} 不存在", port_path));
+    };
+
+    let total_records = writable_records.len();
+    let mut processed = 0;
+
+    // 遍历所有可写寄存器记录
+    for record in writable_records {
+        // 更新状态文本
+        update_write_progress_status(
+            ui_weak,
+            processed,
+            total_records,
+            &record.page_addr,
+            &record.register,
+        )
+        .await;
+
+        // 解析页地址（从站地址）
+        let slave_address =
+            if record.page_addr.starts_with("0x") || record.page_addr.starts_with("0X") {
+                u16::from_str_radix(&record.page_addr[2..], 16)
+                    .map_err(|_| anyhow::anyhow!("无效的页地址格式: {}", record.page_addr))?
+            } else {
+                record
+                    .page_addr
+                    .parse::<u16>()
+                    .map_err(|_| anyhow::anyhow!("无效的页地址: {}", record.page_addr))?
+            };
+
+        // 解析要写入的值
+        let write_value = if record.value.starts_with("0x") || record.value.starts_with("0X") {
+            u16::from_str_radix(&record.value[2..], 16)
+                .map_err(|_| anyhow::anyhow!("无效的值格式: {}", record.value))?
+        } else {
+            record
+                .value
+                .parse::<u16>()
+                .map_err(|_| anyhow::anyhow!("无效的值: {}", record.value))?
+        };
+
+        match write_single_register(port_manager.clone(), 1, slave_address, write_value).await {
+            Ok(()) => {
+                log::info!(
+                    "成功写入 {}:{} = 0x{:04X}",
+                    record.page_addr,
+                    record.register,
+                    write_value
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "写入寄存器失败 {}:{} - {}",
+                    record.page_addr,
+                    record.register,
+                    e
+                );
+                return Err(anyhow::anyhow!(e));
+            }
+        }
+        // 添加小延时避免过于频繁的通信
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        processed += 1;
+    }
+
+    Ok(())
+}
+
+// 更新写入进度状态
+async fn update_write_progress_status(
+    ui_weak: &Weak<AppWindow>,
+    processed: usize,
+    total: usize,
+    page_addr: &str,
+    register: &str,
+) {
+    let ui_weak_clone = ui_weak.clone();
+    let status_text = format!(
+        "正在写入器件数据... ({}/{}): {}:{}",
+        processed + 1,
+        total,
+        page_addr,
+        register
+    );
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.global::<AppState>().set_file_status(status_text.into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(255, 193, 7))); // 橙色
+        }
+    })
+    .unwrap();
+}
+
+// 更新器件写入UI状态 - 成功
+async fn update_device_write_ui_success(ui_weak: &Weak<AppWindow>) {
+    let ui_weak_clone = ui_weak.clone();
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.global::<AppState>()
+                .set_file_status("器件写入完成".into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(40, 167, 69))); // 绿色
+        }
+    })
+    .unwrap();
+}
+
+// 更新器件写入UI状态 - 错误
+async fn update_device_write_ui_error(ui_weak: &Weak<AppWindow>, error_msg: String) {
+    let ui_weak_clone = ui_weak.clone();
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            ui.global::<AppState>()
+                .set_file_status(format!("器件写入失败: {}", error_msg).into());
             ui.global::<AppState>()
                 .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(220, 53, 69))); // 红色
         }
