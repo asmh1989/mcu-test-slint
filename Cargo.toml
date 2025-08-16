@@ -1,7 +1,7 @@
 [package]
 name = "mcu-test"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -44,6 +44,9 @@ csv = "1.3"
 
 rand = "0.8"
 crc = "3.3"
+
+[dev-dependencies]
+tempfile = "3.0"
 
 [build-dependencies]
 slint-build = "1.12.1"

@@ -9,9 +9,9 @@ export { AppState }
 
 export component AppWindow inherits Window {
     title: "MCU测试工具";
-    min-width: 800px;
+    min-width: 1160px;
     min-height: 600px;
-    preferred-width: 1000px;
+    preferred-width: 1200px;
     preferred-height: 600px;
     background: #f0f2f5;
 
@@ -71,6 +71,7 @@ export component AppWindow inherits Window {
         // 右侧面板 - 占比60%
         FileOperationPanel {
             horizontal-stretch: 0.75;
+            min-width: 500px;
             file-status-text <=> AppState.file-status;
             file-status-color <=> AppState.file-status-color;
             read-file-button-text: AppState.read-file-button;
@@ -78,6 +79,8 @@ export component AppWindow inherits Window {
             config-file-button-text: AppState.config-file-button;
             file-content-label: AppState.file-content-label;
             file-content <=> AppState.file-content;
+            table-data <=> AppState.csv-table-data;
+            table-columns <=> AppState.csv-table-columns;
             read-file-clicked => {
                 AppState.read-file-clicked();
             }

@@ -2805,6 +2805,7 @@ dependencies = [
  "serialport",
  "slint",
  "slint-build",
+ "tempfile",
  "thiserror 2.0.14",
  "tokio",
  "tokio-serial",

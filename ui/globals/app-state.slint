@@ -29,6 +29,16 @@ export global AppState {
     in-out property <string> config-file-button: "配置器件";
     in-out property <string> file-content-label: "寄存器地址与参数表";
     in-out property <string> file-content: "";
+    
+    // CSV表格数据
+    in-out property <[[StandardListViewItem]]> csv-table-data: [];
+    in-out property <[TableColumn]> csv-table-columns: [
+        { title: "页地址", min-width: 80px, horizontal-stretch: 1 },
+        { title: "寄存器", min-width: 120px, horizontal-stretch: 2 },
+        { title: "读写", min-width: 60px, horizontal-stretch: 1 },
+        { title: "设置值", min-width: 80px, horizontal-stretch: 1 },
+        { title: "实时值", min-width: 80px, horizontal-stretch: 1 },
+    ];
 
     // 回调函数定义
     callback connect-clicked();

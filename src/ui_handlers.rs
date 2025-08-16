@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::chip_detection::detect_all_chips;
 use crate::config;
+use crate::csv_handler::CsvHandler;
 use crate::serial::manager::SerialPortRegistry;
 use crate::serial::modbus::{ModbusFrame, RegisterType};
 use crate::{AppState, AppWindow};
@@ -30,6 +31,14 @@ pub fn setup_ui_handlers(ui: &AppWindow) {
             .on_io_chip_click(move |chip_type, level, address| {
                 handle_io_chip_click(ui_weak.clone(), chip_type.to_string(), level, address);
             });
+    }
+
+    // 读取文件按钮点击事件
+    {
+        let ui_weak = ui.as_weak();
+        ui.global::<AppState>().on_read_file_clicked(move || {
+            handle_read_file_click(ui_weak.clone());
+        });
     }
 }
 
@@ -398,6 +407,103 @@ async fn update_io_status(
                     log::error!("读取芯片二IO状态失败: {}", e);
                 }
             }
+        }
+    })
+    .unwrap();
+}
+
+// 处理读取文件按钮点击事件
+fn handle_read_file_click(ui_weak: Weak<AppWindow>) {
+    let ui_weak_clone = ui_weak.clone();
+
+    // 在后台线程中执行文件操作
+    config::get_runtime().spawn(async move {
+        // 执行CSV文件读取操作
+        match CsvHandler::read_csv_file() {
+            Ok(table_content) => {
+                log::info!("CSV文件读取成功，共解析 {} 字符", table_content.len());
+
+                // 更新UI状态
+                update_file_ui_success(&ui_weak_clone, table_content).await;
+            }
+            Err(e) => {
+                log::error!("CSV文件读取失败: {}", e);
+
+                // 更新UI错误状态
+                update_file_ui_error(&ui_weak_clone, e.to_string()).await;
+            }
+        }
+    });
+}
+
+// 更新文件操作UI状态 - 成功
+async fn update_file_ui_success(ui_weak: &Weak<AppWindow>, content: String) {
+    let ui_weak_clone = ui_weak.clone();
+    let content_clone = content.clone();
+
+    // 获取表格数据
+    let table_data = match CsvHandler::get_slint_table_data() {
+        Ok(data) => data,
+        Err(e) => {
+            log::error!("获取表格数据失败: {}", e);
+            vec![]
+        }
+    };
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            // 更新文件状态
+            ui.global::<AppState>()
+                .set_file_status("文件读取成功".into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(40, 167, 69))); // 绿色
+
+            // 更新文件内容显示（保留作为备用）
+            ui.global::<AppState>()
+                .set_file_content(content_clone.into());
+
+            // 更新表格数据
+            let table_model = slint::VecModel::from(
+                table_data
+                    .into_iter()
+                    .map(|row| {
+                        let row_model = slint::VecModel::from(
+                            row.into_iter()
+                                .map(|cell| slint::StandardListViewItem::from(cell))
+                                .collect::<Vec<_>>(),
+                        );
+                        slint::ModelRc::new(row_model)
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            ui.global::<AppState>()
+                .set_csv_table_data(slint::ModelRc::new(table_model));
+
+            log::info!("UI状态和表格数据更新完成");
+        }
+    })
+    .unwrap();
+}
+
+// 更新文件操作UI状态 - 错误
+async fn update_file_ui_error(ui_weak: &Weak<AppWindow>, error_msg: String) {
+    let ui_weak_clone = ui_weak.clone();
+
+    slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak_clone.upgrade() {
+            // 更新文件状态为错误
+            ui.global::<AppState>()
+                .set_file_status(format!("读取失败: {}", error_msg).into());
+            ui.global::<AppState>()
+                .set_file_status_color(slint::Brush::from(slint::Color::from_rgb_u8(220, 53, 69))); // 红色
+
+            // 清空文件内容
+            ui.global::<AppState>().set_file_content("".into());
+
+            // 清空表格数据
+            let empty_table = slint::VecModel::from(vec![]);
+            ui.global::<AppState>()
+                .set_csv_table_data(slint::ModelRc::new(empty_table));
         }
     })
     .unwrap();
